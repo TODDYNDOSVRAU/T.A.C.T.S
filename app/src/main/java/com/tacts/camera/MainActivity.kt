@@ -53,8 +53,11 @@ class MainActivity : ComponentActivity() {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
     AppMotion.readSystem(this)
-    val startMode = if (intent?.action == android.provider.MediaStore.INTENT_ACTION_VIDEO_CAMERA) CaptureMode.VIDEO
-    else CaptureMode.PHOTO
+    val startMode = when (intent?.action) {
+      android.provider.MediaStore.INTENT_ACTION_VIDEO_CAMERA -> CaptureMode.VIDEO
+      android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA -> CaptureMode.PHOTO
+      else -> null
+    }
     setContent { TactsTheme { PermissionGate { CameraScreen(startMode) } } }
   }
 

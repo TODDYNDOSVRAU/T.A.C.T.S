@@ -1,6 +1,7 @@
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.compose)
+  alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -11,8 +12,8 @@ android {
     applicationId = "com.tacts.camera"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 2
+    versionName = "2.0"
   }
 
   signingConfigs {
@@ -64,6 +65,9 @@ dependencies {
   implementation(libs.androidx.camera.video)
   implementation(libs.androidx.camera.view)
   implementation(libs.kotlinx.coroutines.android)
+  // Settings are one serialized object in DataStore
+  implementation(libs.androidx.datastore.preferences)
+  implementation(libs.kotlinx.serialization.json)
   testImplementation(libs.junit)
   debugImplementation(libs.androidx.compose.ui.tooling)
 }

@@ -6,7 +6,7 @@
 
 <p align="center"><b>TOTTALLY ACCURATE CAMERA TECHNOLOGY SYSTEM</b></p>
 
-<p align="center">Camera app for Android with manual controls and live looks.</p>
+<p align="center">Pro camera for Android: manual control of the sensor, cinema monitoring tools, log profiles, LUTs and RAW video.</p>
 
 <p align="center">
   <a href="https://github.com/TODDYNDOSVRAU/T.A.C.T.S/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/TODDYNDOSVRAU/T.A.C.T.S?label=release&color=0E7C86"></a>
@@ -15,74 +15,123 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/camera.png" width="240" alt="Camera">
-  <img src="docs/screenshots/looks.png" width="240" alt="Looks">
-  <img src="docs/screenshots/pro.png" width="240" alt="Pro controls">
+  <img src="docs/screenshots/camera.png" width="200" alt="Camera">
+  <img src="docs/screenshots/scopes.png" width="200" alt="Waveform and level">
+  <img src="docs/screenshots/video.png" width="200" alt="Recording with a LUT">
+  <img src="docs/screenshots/settings.png" width="200" alt="Settings">
 </p>
+
+The toolset of the pro camera apps filmmakers use on phones, in one app, built on everything the
+Android Camera2 API exposes. Every option is read from the camera first: what your phone cannot do is
+hidden or says why.
 
 ## Features
 
-**Capture**
-- Photo in 4:3 and video in 16:9 (HD, FHD or 4K, falling back to what the camera supports)
-- Flash off, auto or on for photos; continuous light for video
-- Self-timer (3 s or 10 s) and a rule-of-thirds grid
-- Tap to focus and meter, pinch to zoom, zoom presets including ultra-wide when the phone has one
-- Front and back cameras, with the last capture one tap away in the gallery
-- Saved to `Pictures/TACTS` and `Movies/TACTS`, visible in any gallery app
-- Opens from the system camera and video camera shortcuts
+**Exposure and focus**
+- ISO and shutter speed in full stops, from 1/32000 s to 60 s within what the sensor allows
+- **Shutter angle** for video (11.25° to 360°, 172.8° for 50 Hz light), following the frame rate
+- Exposure compensation, **AE lock**, metering matrix / centre / spot
+- Tap to focus; **long-press for a separate exposure point**, so focus and exposure are set apart
+- Manual focus with an **A/B focus pull** eased over 0.5–8 s
+- Antibanding 50/60 Hz, aperture and ND filter on lenses that have them, face detection
+- Live readouts of what auto chose; switching to manual starts from them
 
-**Pro**
-- Exposure compensation (EV)
-- Manual ISO and shutter speed in full stops, from 1/8000 s to 30 s within what the sensor allows
-- Manual focus, from infinity to the lens's closest distance
-- White balance presets: daylight, cloudy, shade, tungsten, fluorescent
-- RAW (DNG) + JPEG on cameras that support it
-- Live luminance histogram, and live ISO and shutter readouts while in auto
-- Switching to manual starts from the values auto had chosen; manual values are shown in amber
+**Colour and picture**
+- White balance: auto, **AWB lock**, presets, or **Kelvin 2000–10000 K with tint**, computed from the
+  sensor's own colour matrices
+- **Gamma profiles** on the ISP's tonemap curve: Standard, Flat, Log, Log high contrast, HLG-like, Linear
+- Noise reduction, sharpening, hot-pixel and lens-shading correction: off, fast, high quality or minimal
+- **3D LUTs**: built-in ones (Log to Rec.709, Teal & orange, Bleach bypass, Warm film…) and your own
+  **.cube** files; shown live on the preview, burnt into video on the GPU and applied to JPEG photos
+- Eight looks (Natural, Vivid, Warm, Cool, Fade, Mono, Noir, Sepia) on preview, photo and video
 
-**Looks**
-- Natural, Vivid, Warm, Cool, Fade, Mono, Noir and Sepia
-- The live preview shows the look exactly as the saved photo will have it
+**Video**
+- SD, HD, FHD, 4K; **24, 25, 30, 48, 50, 60 fps**; bitrate Auto to 200 Mb/s
+- **10-bit HDR**: HLG, HDR10, HDR10+, Dolby Vision where the phone supports it
+- **Slow motion** at 120 / 240 fps on phones with high-speed video
+- Stabilization: off, video, or preview + video; OIS on/off
+- Audio on/off, source (camcorder, unprocessed, voice, mic) and a **live level meter**
+- **Clip names like a cinema camera**: `A001_C001_YYMMDD`, with reel and clip counters
+- Time-of-day **timecode** in the status line
+
+**RAW video**
+- The sensor's own data, frame by frame, as a **DNG sequence** in `DCIM/TACTS/<clip>/` that
+  DaVinci Resolve and other graders open as a clip
+- Runs its own Camera2 session; frames written and dropped are shown live
+
+**Monitoring**
+- **Focus peaking** (five colours, adjustable), **zebras** (70–100 %), **false colour**
+- **Waveform**, **RGB parade**, **vectorscope** with skin-tone line, luma and **RGB histograms**,
+  clipping warning
+- **Frame guides** 2.39, 2.35, 1.85, 16:9, 4:3, 1:1, 9:16, 4:5; **safe areas** 90 / 80 %
+- **Anamorphic desqueeze** preview 1.33× to 2×
+- **Horizon level**, centre mark, grids (thirds, golden ratio, crosshair, squares)
+- A status line with format, frame rate, shutter, ISO, white balance, gamma, LUT and timecode
+
+**Photo**
+- JPEG (quality 70–100), **Ultra HDR**, **RAW (DNG)**, **RAW + JPEG**
+- **Burst**, **interval / timelapse**, **AE bracketing** (3–9 shots, ±0.3 to ±3 EV),
+  **focus bracketing** for focus stacking, **night mode** (averages 2–32 frames to cut noise)
+- Self-timer, flash, low-light boost and torch strength where supported
+
+**Camera**
+- Front and back, and the **physical lenses** behind a multi-camera (ultra-wide, wide, tele) with
+  their 35 mm equivalent
+- **Camera info**: every Camera2 characteristic of every camera on the phone, a summary of what it
+  supports, and its stream sizes
+- Every setting is kept between launches
 
 **Design**
-- The T.A.R.K.A.S. design system: T.A.L. palette with the ice accent, on a pure black page
-- Space Grotesk for titles, Inter for the interface, JetBrains Mono for readings (ISO, shutter, zoom, timer)
-- Controls, panels and readings bounce into place with the T.A.R.K.A.S. "Quicar" animation
-- Follows the system's "remove animations" setting
+- The T.A.R.K.A.S. design system: T.A.L. palette with the ice accent on a pure black page, Space
+  Grotesk, Inter and JetBrains Mono, grouped settings lists
+- Controls, panels and readings bounce into place with the T.A.R.K.A.S. "Quicar" animation, and stop
+  when the system's animations are off
 
 ## Installation
 
 Download the APK from the [latest release](https://github.com/TODDYNDOSVRAU/T.A.C.T.S/releases/latest) and install it. Updates install over the previous version.
 
-The app asks for the camera, and for the microphone for sound in videos. Videos are recorded silent if the microphone is refused.
+The app asks for the camera, and for the microphone for sound in videos.
 
 ## Privacy
 
-No account, no internet permission and no backend. Photos and videos are saved only to the phone's own gallery, and nothing leaves the device.
+No account, no internet permission and no backend. Photos, videos and LUTs stay on the phone.
 
 ## Limitations
 
-- Manual ISO, shutter and focus need a camera that exposes the camera2 `MANUAL_SENSOR` capability. On other phones the PRO panel says so and keeps EV and white balance.
-- Looks apply to JPEG photos. RAW files are saved untouched, and videos are recorded without the look.
-- RAW depends on the phone's camera; the RAW button appears only where it is supported.
+What the app can do depends on the phone's camera (Settings > Camera info shows it):
+
+- **Manual ISO, shutter and focus** need the Camera2 `MANUAL_SENSOR` capability; **Kelvin** needs
+  `MANUAL_POST_PROCESSING`, otherwise the nearest preset is used; **gamma profiles** need tonemap
+  curve support. Most mid- and high-end phones have them; LEGACY and many LIMITED cameras do not.
+- **RAW video** needs the `RAW` capability. Frames are written as uncompressed DNG, so the frame rate
+  that reaches storage depends on the phone; dropped frames are counted on screen. No sound is recorded
+  with RAW video.
+- Log profiles are curves on the phone's image processor, not a manufacturer's log.
+- LUTs and looks are burnt into 8-bit video only, not into 10-bit HDR or slow motion.
+- Slow motion records without sound, as the platform's high-speed mode does.
 
 ## Roadmap
 
-Looks on video, night and HDR modes, a level indicator, focus peaking and zebras, and saving the last settings between sessions.
+Multi-frame alignment for night mode, a dual-camera picture-in-picture mode, external microphones with
+gain, and compressed RAW video.
 
 ## Tech
 
-Kotlin · Jetpack Compose · Material 3 · CameraX (core, camera2 interop, video, view) · Space Grotesk, Inter and JetBrains Mono ([OFL](docs/licenses/fonts))
+Kotlin · Jetpack Compose · Material 3 · CameraX (core, camera2 interop, video, view, high-speed
+sessions, effects) · Camera2 · OpenGL ES 2 · DataStore · Space Grotesk, Inter and JetBrains Mono
+([OFL](docs/licenses/fonts))
 
-| File | What it does |
+| Area | Files |
 | --- | --- |
-| [`camera/TactsCamera.kt`](app/src/main/java/com/tacts/camera/camera/TactsCamera.kt) | Binding, photo, video and the manual controls |
-| [`camera/Manual.kt`](app/src/main/java/com/tacts/camera/camera/Manual.kt) | Settings, camera capabilities, ISO and shutter stops |
-| [`camera/HistogramAnalyzer.kt`](app/src/main/java/com/tacts/camera/camera/HistogramAnalyzer.kt) | Luminance histogram from the analysis frames |
-| [`camera/MediaSaver.kt`](app/src/main/java/com/tacts/camera/camera/MediaSaver.kt) | Saving to the gallery and thumbnails |
-| [`filters/Looks.kt`](app/src/main/java/com/tacts/camera/filters/Looks.kt) | The looks as colour matrices |
-| [`ui/CameraScreen.kt`](app/src/main/java/com/tacts/camera/ui/CameraScreen.kt), [`ui/ProPanel.kt`](app/src/main/java/com/tacts/camera/ui/ProPanel.kt) | The camera interface |
-| [`ui/theme/`](app/src/main/java/com/tacts/camera/ui/theme), [`ui/components/Design.kt`](app/src/main/java/com/tacts/camera/ui/components/Design.kt) | Colours, type, tokens, the bounce and the shared components, from T.A.R.K.A.S. |
+| Engine | [`camera/TactsCamera.kt`](app/src/main/java/com/tacts/camera/camera/TactsCamera.kt): binding, capture, video, photo modes, focus pull |
+| Camera2 requests | [`camera/RequestOptions.kt`](app/src/main/java/com/tacts/camera/camera/RequestOptions.kt): exposure, Kelvin, gamma curves, processing |
+| Capabilities | [`camera/CameraCaps.kt`](app/src/main/java/com/tacts/camera/camera/CameraCaps.kt) |
+| Settings | [`camera/Settings.kt`](app/src/main/java/com/tacts/camera/camera/Settings.kt) |
+| RAW video | [`raw/RawVideoEngine.kt`](app/src/main/java/com/tacts/camera/raw/RawVideoEngine.kt) |
+| Scopes | [`monitor/Scopes.kt`](app/src/main/java/com/tacts/camera/monitor/Scopes.kt) |
+| LUTs and GPU effect | [`effects/Lut.kt`](app/src/main/java/com/tacts/camera/effects/Lut.kt), [`effects/LutProcessor.kt`](app/src/main/java/com/tacts/camera/effects/LutProcessor.kt) |
+| Interface | [`ui/`](app/src/main/java/com/tacts/camera/ui) |
 
 ## License
 

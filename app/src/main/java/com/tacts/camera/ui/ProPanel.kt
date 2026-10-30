@@ -33,9 +33,16 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tacts.camera.camera.ManualSettings
+import com.tacts.camera.camera.CaptureMode
+import com.tacts.camera.camera.FrameGuide
+import com.tacts.camera.camera.GridStyle
+import com.tacts.camera.camera.SHUTTER_ANGLES
+import com.tacts.camera.camera.Scope
+import com.tacts.camera.camera.ShutterMode
 import com.tacts.camera.camera.TactsCamera
 import com.tacts.camera.camera.WhiteBalance
+import com.tacts.camera.camera.WhiteBalanceMode
+import com.tacts.camera.camera.angleLabel
 import com.tacts.camera.camera.focusLabel
 import com.tacts.camera.camera.nearestIndex
 import com.tacts.camera.camera.shutterLabel
@@ -50,16 +57,20 @@ import com.tacts.camera.ui.theme.bounceEntrance
 import com.tacts.camera.ui.theme.floatingSurface
 import com.tacts.camera.ui.theme.glassControl
 import kotlin.math.abs
+import kotlin.math.ln
 import kotlin.math.roundToInt
 
 enum class ProTab(val label: String) { EV("EV"), ISO("ISO"), SHUTTER("S"), FOCUS("F"), WB("WB") }
 
+private fun isVideo(camera: TactsCamera) = camera.settings.mode != CaptureMode.PHOTO
+
 /** The manual controls: a row of value chips, and a dial for the selected one under it. */
 @Composable
 fun ProPanel(camera: TactsCamera, tab: ProTab, onTab: (ProTab) -> Unit, modifier: Modifier = Modifier) {
-  val m = camera.manual
+  val s = camera.settings
   val caps = camera.caps
   val live = camera.live
+  val angle = isVideo(camera) && s.shutterMode == ShutterMode.ANGLE
 
   Column(
     modifier
@@ -70,52 +81,69 @@ fun ProPanel(camera: TactsCamera, tab: ProTab, onTab: (ProTab) -> Unit, modifier
       .padding(horizontal = Space.m, vertical = Space.m)
   ) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-      ProChip(ProTab.EV, evLabel(m.evIndex, caps.evStep), m.evIndex != 0, tab == ProTab.EV, 0, onTab)
-      ProChip(ProTab.ISO, if (m.exposureAuto) "${live.iso ?: "–"}" else "${m.iso}", !m.exposureAuto, tab == ProTab.ISO, 1, onTab)
+      ProChip(ProTab.EV, if (s.aeLock) "AE-L" else evLabel(s.evIndex, caps.evStep), s.evIndex != 0 || s.aeLock, tab == ProTab.EV, 0, onTab)
+      ProChip(ProTab.ISO, if (s.exposureAuto) "${live.iso ?: "–"}" else "${s.iso}", !s.exposureAuto, tab == ProTab.ISO, 1, onTab)
       ProChip(
         ProTab.SHUTTER,
-        if (m.exposureAuto) live.shutterNs?.let(::shutterLabel) ?: "–" else shutterLabel(m.shutterNs),
-        !m.exposureAuto,
+        when {
+          angle && !s.exposureAuto -> angleLabel(s.shutterAngle)
+          s.exposureAuto -> live.shutterNs?.let(::shutterLabel) ?: "–"
+          else -> shutterLabel(s.shutterNs)
+        },
+        !s.exposureAuto,
         tab == ProTab.SHUTTER,
         2,
         onTab
       )
-      ProChip(ProTab.FOCUS, if (m.focusAuto) "AF" else focusLabel(m.focusDiopters), !m.focusAuto, tab == ProTab.FOCUS, 3, onTab)
-      ProChip(ProTab.WB, m.whiteBalance.label.take(4), m.whiteBalance != WhiteBalance.AUTO, tab == ProTab.WB, 4, onTab)
+      ProChip(ProTab.FOCUS, if (s.focusAuto) "AF" else focusLabel(s.focusDiopters), !s.focusAuto, tab == ProTab.FOCUS, 3, onTab)
+      ProChip(
+        ProTab.WB,
+        when (s.wbMode) {
+          WhiteBalanceMode.AUTO -> if (s.awbLock) "AWB-L" else "AWB"
+          WhiteBalanceMode.PRESET -> "${s.whiteBalance.kelvin}K"
+          WhiteBalanceMode.KELVIN -> "${s.kelvin}K"
+        },
+        s.wbMode != WhiteBalanceMode.AUTO || s.awbLock,
+        tab == ProTab.WB,
+        4,
+        onTab
+      )
     }
     Spacer(Modifier.height(Space.s))
     when (tab) {
-      ProTab.EV -> EvDial(camera, m)
-      ProTab.ISO -> if (caps.isoValues.isEmpty()) Unsupported() else ExposureDial(
-        camera,
-        auto = m.exposureAuto,
+      ProTab.EV -> EvDial(camera)
+      ProTab.ISO -> if (caps.isoValues.isEmpty()) Unsupported() else StepDial(
+        auto = s.exposureAuto,
+        autoLabel = "A",
         count = caps.isoValues.size,
-        index = nearestIndex(caps.isoValues, m.iso) { a, b -> abs(a - b).toDouble() },
+        index = nearestIndex(caps.isoValues, s.iso) { a, b -> abs(a - b).toDouble() },
         label = { "ISO ${caps.isoValues[it]}" },
-        onIndex = { i -> camera.updateManual { s -> s.copy(iso = caps.isoValues[i]) } }
+        onAuto = { camera.update { it.copy(exposureAuto = !it.exposureAuto) } },
+        onIndex = { i -> camera.update { it.copy(exposureAuto = false, iso = caps.isoValues[i]) } }
       )
-      ProTab.SHUTTER -> if (caps.shutterValues.isEmpty()) Unsupported() else ExposureDial(
-        camera,
-        auto = m.exposureAuto,
-        count = caps.shutterValues.size,
-        index = nearestIndex(caps.shutterValues, m.shutterNs) { a, b -> abs(kotlin.math.ln(a.toDouble() / b)) },
-        label = { shutterLabel(caps.shutterValues[it]) },
-        onIndex = { i -> camera.updateManual { s -> s.copy(shutterNs = caps.shutterValues[i]) } }
-      )
-      ProTab.FOCUS -> if (caps.minFocusDiopters <= 0f) Unsupported("This lens has fixed focus") else FocusDial(camera, m)
-      ProTab.WB -> Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(Space.xs)
-      ) {
-        caps.whiteBalances.forEachIndexed { i, wb ->
-          FilterChip(
-            wb.label,
-            selected = m.whiteBalance == wb,
-            onClick = { camera.updateManual { it.copy(whiteBalance = wb) } },
-            modifier = Modifier.bounceEntrance(i)
-          )
-        }
+      ProTab.SHUTTER -> when {
+        caps.shutterValues.isEmpty() -> Unsupported()
+        angle -> StepDial(
+          auto = s.exposureAuto,
+          autoLabel = "A",
+          count = SHUTTER_ANGLES.size,
+          index = SHUTTER_ANGLES.indexOf(s.shutterAngle).coerceAtLeast(0),
+          label = { "${angleLabel(SHUTTER_ANGLES[it])} · ${shutterLabel(s.copy(shutterAngle = SHUTTER_ANGLES[it]).angleExposureNs())}" },
+          onAuto = { camera.update { it.copy(exposureAuto = !it.exposureAuto) } },
+          onIndex = { i -> camera.update { it.copy(exposureAuto = false, shutterAngle = SHUTTER_ANGLES[i]) } }
+        )
+        else -> StepDial(
+          auto = s.exposureAuto,
+          autoLabel = "A",
+          count = caps.shutterValues.size,
+          index = nearestIndex(caps.shutterValues, s.shutterNs) { a, b -> abs(ln(a.toDouble() / b)) },
+          label = { shutterLabel(caps.shutterValues[it]) },
+          onAuto = { camera.update { it.copy(exposureAuto = !it.exposureAuto) } },
+          onIndex = { i -> camera.update { it.copy(exposureAuto = false, shutterNs = caps.shutterValues[i]) } }
+        )
       }
+      ProTab.FOCUS -> if (caps.minFocusDiopters <= 0f) Unsupported("This lens has fixed focus") else FocusDial(camera)
+      ProTab.WB -> WbDial(camera)
     }
   }
 }
@@ -125,7 +153,6 @@ private fun evLabel(index: Int, step: Float): String {
   return if (abs(ev) < 0.01f) "±0" else (if (ev > 0) "+" else "−") + "%.1f".format(abs(ev))
 }
 
-/** One manual value: its name over its reading, the reading in the accent once it is set by hand. */
 @Composable
 private fun ProChip(tab: ProTab, value: String, manual: Boolean, selected: Boolean, index: Int, onTab: (ProTab) -> Unit) {
   val colors = MaterialTheme.colorScheme
@@ -134,77 +161,168 @@ private fun ProChip(tab: ProTab, value: String, manual: Boolean, selected: Boole
       .bounceEntrance(index)
       .glassControl(Shapes.s, selected)
       .selectable(selected = selected, role = Role.Tab) { onTab(tab) }
-      .padding(horizontal = Space.m, vertical = Space.s),
+      .padding(horizontal = Space.s, vertical = Space.s),
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
     Text(tab.label, style = AppText.Caption2.copy(fontWeight = FontWeight.SemiBold), color = colors.onSurfaceVariant)
     Text(
       value,
       style = AppText.Subhead.copy(fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium),
-      color = if (manual) colors.primary else colors.onSurface
+      color = if (manual) colors.primary else colors.onSurface,
+      maxLines = 1
     )
   }
 }
 
 @Composable
-private fun EvDial(camera: TactsCamera, m: ManualSettings) {
+private fun EvDial(camera: TactsCamera) {
+  val s = camera.settings
   val caps = camera.caps
   if (caps.evRange.first == caps.evRange.last) return Unsupported("This camera has no exposure compensation")
-  if (!m.exposureAuto) return Unsupported("Exposure compensation works with auto ISO and shutter")
-  DialRow(label = "EV ${evLabel(m.evIndex, caps.evStep)}", leading = {
-    FilterChip("0", selected = m.evIndex == 0, onClick = { camera.updateManual { it.copy(evIndex = 0) } })
+  if (!s.exposureAuto) return Unsupported("Exposure compensation works with auto ISO and shutter")
+  DialRow(label = "EV ${evLabel(s.evIndex, caps.evStep)}", leading = {
+    FilterChip("AE-L", selected = s.aeLock, onClick = { camera.update { it.copy(aeLock = !it.aeLock) } })
   }) {
     val span = caps.evRange.last - caps.evRange.first
     Slider(
-      value = m.evIndex.toFloat(),
-      onValueChange = { v -> camera.updateManual { it.copy(evIndex = v.roundToInt()) } },
+      value = s.evIndex.toFloat(),
+      onValueChange = { v -> camera.update { it.copy(evIndex = v.roundToInt()) } },
       valueRange = caps.evRange.first.toFloat()..caps.evRange.last.toFloat(),
       steps = (span - 1).coerceAtLeast(0),
-      colors = sliderColors(m.evIndex != 0)
+      colors = sliderColors(s.evIndex != 0)
     )
   }
 }
 
 @Composable
-private fun ExposureDial(
-  camera: TactsCamera,
+private fun StepDial(
   auto: Boolean,
+  autoLabel: String,
   count: Int,
   index: Int,
   label: (Int) -> String,
+  onAuto: () -> Unit,
   onIndex: (Int) -> Unit
 ) {
-  DialRow(label = if (auto) "AUTO" else label(index), leading = {
-    FilterChip("A", selected = auto, onClick = { camera.updateManual { it.copy(exposureAuto = !it.exposureAuto) } })
-  }) {
+  DialRow(label = if (auto) "AUTO" else label(index), leading = { FilterChip(autoLabel, selected = auto, onClick = onAuto) }) {
     Slider(
       value = index.toFloat(),
-      onValueChange = { v ->
-        if (auto) camera.updateManual { it.copy(exposureAuto = false) }
-        onIndex(v.roundToInt().coerceIn(0, count - 1))
-      },
-      valueRange = 0f..(count - 1).toFloat(),
+      onValueChange = { v -> onIndex(v.roundToInt().coerceIn(0, count - 1)) },
+      valueRange = 0f..(count - 1).coerceAtLeast(1).toFloat(),
       steps = (count - 2).coerceAtLeast(0),
       colors = sliderColors(!auto)
     )
   }
 }
 
+/** Manual focus, plus the A and B marks of a focus pull and the button that runs it. */
 @Composable
-private fun FocusDial(camera: TactsCamera, m: ManualSettings) {
+private fun FocusDial(camera: TactsCamera) {
+  val s = camera.settings
   val max = camera.caps.minFocusDiopters
-  DialRow(label = if (m.focusAuto) "AUTO" else focusLabel(m.focusDiopters), leading = {
-    FilterChip("AF", selected = m.focusAuto, onClick = { camera.updateManual { it.copy(focusAuto = !it.focusAuto) } })
-  }) {
-    // Left is infinity, right is the closest the lens can focus.
-    Slider(
-      value = m.focusDiopters.coerceIn(0f, max),
-      onValueChange = { v -> camera.updateManual { it.copy(focusAuto = false, focusDiopters = v) } },
-      valueRange = 0f..max,
-      colors = sliderColors(!m.focusAuto)
-    )
+  Column {
+    DialRow(label = if (s.focusAuto) "AUTO" else focusLabel(s.focusDiopters), leading = {
+      FilterChip("AF", selected = s.focusAuto, onClick = { camera.update { it.copy(focusAuto = !it.focusAuto) } })
+    }) {
+      // Left is infinity, right is the closest the lens can focus.
+      Slider(
+        value = s.focusDiopters.coerceIn(0f, max),
+        onValueChange = { v -> camera.update { it.copy(focusAuto = false, focusDiopters = v) } },
+        valueRange = 0f..max,
+        colors = sliderColors(!s.focusAuto)
+      )
+    }
+    Row(Modifier.bounceEntrance(6).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+      FilterChip(
+        "A ${s.focusPullA?.let(::focusLabel) ?: "set"}",
+        selected = s.focusPullA != null,
+        onClick = { camera.update { it.copy(focusPullA = if (it.focusAuto) camera.live.focusDiopters ?: 0f else it.focusDiopters) } }
+      )
+      FilterChip(
+        "B ${s.focusPullB?.let(::focusLabel) ?: "set"}",
+        selected = s.focusPullB != null,
+        onClick = { camera.update { it.copy(focusPullB = if (it.focusAuto) camera.live.focusDiopters ?: 0f else it.focusDiopters) } }
+      )
+      FilterChip(
+        "${s.focusPullMs / 1000f}s",
+        selected = false,
+        onClick = { camera.update { it.copy(focusPullMs = PULL_DURATIONS[(PULL_DURATIONS.indexOf(it.focusPullMs) + 1) % PULL_DURATIONS.size]) } }
+      )
+      FilterChip(
+        if (camera.focusPulling) "Pulling…" else "Pull A↔B",
+        selected = camera.focusPulling,
+        enabled = s.focusPullA != null && s.focusPullB != null,
+        onClick = { camera.pullFocus() }
+      )
+    }
   }
 }
+
+private val PULL_DURATIONS = listOf(500, 1000, 2000, 3000, 5000, 8000)
+
+/** White balance: auto (with lock), the presets, or Kelvin and tint. */
+@Composable
+private fun WbDial(camera: TactsCamera) {
+  val s = camera.settings
+  val caps = camera.caps
+  Column {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.xxs)) {
+      FilterChip("Auto", selected = s.wbMode == WhiteBalanceMode.AUTO && !s.awbLock, onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.AUTO, awbLock = false) } }, modifier = Modifier.bounceEntrance(0))
+      FilterChip("AWB-L", selected = s.wbMode == WhiteBalanceMode.AUTO && s.awbLock, onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.AUTO, awbLock = true) } }, modifier = Modifier.bounceEntrance(1))
+      FilterChip("Kelvin", selected = s.wbMode == WhiteBalanceMode.KELVIN, onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.KELVIN) } }, modifier = Modifier.bounceEntrance(2))
+      WhiteBalance.entries.filter { it.awbMode in caps.awbModes || caps.hasManualWbGains }.forEachIndexed { i, wb ->
+        FilterChip(
+          wb.label,
+          selected = s.wbMode == WhiteBalanceMode.PRESET && s.whiteBalance == wb,
+          onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.PRESET, whiteBalance = wb, kelvin = wb.kelvin) } },
+          modifier = Modifier.bounceEntrance(i + 3)
+        )
+      }
+    }
+    if (s.wbMode == WhiteBalanceMode.KELVIN) {
+      DialRow(label = "${s.kelvin} K", leading = { KelvinSwatch(s.kelvin) }) {
+        Slider(
+          value = s.kelvin.toFloat(),
+          onValueChange = { v -> camera.update { it.copy(kelvin = (v / 50f).roundToInt() * 50) } },
+          valueRange = 2000f..10000f,
+          colors = sliderColors(true)
+        )
+      }
+      DialRow(label = "Tint ${if (s.tint > 0) "+" else ""}${s.tint}", leading = { Spacer(Modifier.width(34.dp)) }) {
+        Slider(
+          value = s.tint.toFloat(),
+          onValueChange = { v -> camera.update { it.copy(tint = v.roundToInt()) } },
+          valueRange = -50f..50f,
+          colors = sliderColors(s.tint != 0)
+        )
+      }
+      if (!caps.hasManualWbGains) {
+        Text("This camera has no manual colour gains: the nearest preset is used.", style = AppText.Caption1, color = MaterialTheme.colorScheme.onSurfaceVariant)
+      }
+    }
+  }
+}
+
+@Composable
+private fun KelvinSwatch(kelvin: Int) {
+  val t = ((kelvin - 2000) / 8000f).coerceIn(0f, 1f)
+  val warm = Color(0xFFFFA24A)
+  val cool = Color(0xFF9CC8FF)
+  Box(
+    Modifier
+      .size(34.dp)
+      .clip(Shapes.pill)
+      .border(1.dp, MaterialTheme.colorScheme.outline, Shapes.pill)
+  ) {
+    Canvas(Modifier.size(34.dp)) { drawRect(lerp(warm, cool, t)) }
+  }
+}
+
+private fun lerp(a: Color, b: Color, t: Float) = Color(
+  a.red + (b.red - a.red) * t,
+  a.green + (b.green - a.green) * t,
+  a.blue + (b.blue - a.blue) * t
+)
 
 @Composable
 private fun DialRow(label: String, leading: @Composable () -> Unit, slider: @Composable () -> Unit) {
@@ -217,7 +335,8 @@ private fun DialRow(label: String, leading: @Composable () -> Unit, slider: @Com
       label,
       style = AppText.Footnote.copy(fontFamily = JetBrainsMono),
       color = MaterialTheme.colorScheme.onSurface,
-      modifier = Modifier.width(76.dp)
+      modifier = Modifier.width(96.dp),
+      maxLines = 1
     )
   }
 }
@@ -244,48 +363,92 @@ private fun Unsupported(text: String = "This camera has no manual sensor control
   )
 }
 
-/** The look picker: a swatch for each look, drawn through its own colour matrix. */
+/** Quick switches for the monitoring tools, like the assist menu of a cinema camera. */
 @Composable
-fun LookStrip(current: Look, onLook: (Look) -> Unit, modifier: Modifier = Modifier) {
-  val colors = MaterialTheme.colorScheme
-  Row(
+fun MonitorPanel(camera: TactsCamera, modifier: Modifier = Modifier) {
+  val s = camera.settings
+  Column(
     modifier
       .fillMaxWidth()
       .padding(horizontal = Space.s)
       .bounceEntrance()
       .floatingSurface(Shapes.l)
-      .horizontalScroll(rememberScrollState())
-      .padding(horizontal = Space.s, vertical = Space.s),
-    horizontalArrangement = Arrangement.spacedBy(Space.xxs)
+      .padding(Space.s)
   ) {
-    Look.entries.forEachIndexed { i, look ->
-      val selected = look == current
-      val filter = look.matrix()?.let { ColorFilter.colorMatrix(ColorMatrix(it.array)) }
-      Column(
-        Modifier
-          .bounceEntrance(i)
-          .clip(Shapes.m)
-          .highlightClickable(role = Role.Tab) { onLook(look) }
-          .padding(Space.xs),
-        horizontalAlignment = Alignment.CenterHorizontally
-      ) {
-        Canvas(
+    Row(Modifier.horizontalScroll(rememberScrollState())) {
+      FilterChip("Peaking", s.peaking, { camera.update { it.copy(peaking = !it.peaking) } }, Modifier.bounceEntrance(0))
+      FilterChip("Zebras ${s.zebraLevel}%", s.zebras, { camera.update { it.copy(zebras = !it.zebras) } }, Modifier.bounceEntrance(1))
+      FilterChip("False colour", s.falseColor, { camera.update { it.copy(falseColor = !it.falseColor) } }, Modifier.bounceEntrance(2))
+      FilterChip("Level", s.level, { camera.update { it.copy(level = !it.level) } }, Modifier.bounceEntrance(3))
+      FilterChip("Centre", s.centerMark, { camera.update { it.copy(centerMark = !it.centerMark) } }, Modifier.bounceEntrance(4))
+    }
+    Row(Modifier.horizontalScroll(rememberScrollState())) {
+      Scope.entries.forEachIndexed { i, sc ->
+        FilterChip(if (sc == Scope.NONE) "No scope" else sc.label, s.scope == sc, { camera.update { it.copy(scope = sc) } }, Modifier.bounceEntrance(i))
+      }
+    }
+    Row(Modifier.horizontalScroll(rememberScrollState())) {
+      FrameGuide.entries.forEachIndexed { i, g ->
+        FilterChip(if (g == FrameGuide.NONE) "No guide" else g.label, s.frameGuide == g, { camera.update { it.copy(frameGuide = g) } }, Modifier.bounceEntrance(i))
+      }
+    }
+    Row(Modifier.horizontalScroll(rememberScrollState())) {
+      GridStyle.entries.forEachIndexed { i, g ->
+        FilterChip(if (g == GridStyle.OFF) "No grid" else g.label, s.grid == g, { camera.update { it.copy(grid = g) } }, Modifier.bounceEntrance(i))
+      }
+    }
+  }
+}
+
+/** The look picker: a swatch for each look, then the LUTs. */
+@Composable
+fun LookStrip(camera: TactsCamera, modifier: Modifier = Modifier) {
+  val colors = MaterialTheme.colorScheme
+  val s = camera.settings
+  Column(
+    modifier
+      .fillMaxWidth()
+      .padding(horizontal = Space.s)
+      .bounceEntrance()
+      .floatingSurface(Shapes.l)
+      .padding(vertical = Space.s)
+  ) {
+    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = Space.s), horizontalArrangement = Arrangement.spacedBy(Space.xxs)) {
+      Look.entries.forEachIndexed { i, look ->
+        val selected = look.name == s.look
+        val filter = look.matrix()?.let { ColorFilter.colorMatrix(ColorMatrix(it.array)) }
+        Column(
           Modifier
-            .size(52.dp)
-            .clip(Shapes.s)
-            .border(2.dp, if (selected) colors.primary else Color.Transparent, Shapes.s)
+            .bounceEntrance(i)
+            .clip(Shapes.m)
+            .highlightClickable(role = Role.Tab) { camera.update { it.copy(look = look.name) } }
+            .padding(Space.xs),
+          horizontalAlignment = Alignment.CenterHorizontally
         ) {
-          drawRect(SWATCH, size = size, colorFilter = filter)
-          drawCircle(Color(0xFFF4D1B0), radius = size.minDimension * 0.18f, center = Offset(size.width * 0.35f, size.height * 0.62f), colorFilter = filter)
-          drawRect(Color(0xFF3E7D4A), topLeft = Offset(0f, size.height * 0.8f), size = Size(size.width, size.height * 0.2f), colorFilter = filter)
+          Canvas(
+            Modifier
+              .size(52.dp)
+              .clip(Shapes.s)
+              .border(2.dp, if (selected) colors.primary else Color.Transparent, Shapes.s)
+          ) {
+            drawRect(SWATCH, size = size, colorFilter = filter)
+            drawCircle(Color(0xFFF4D1B0), radius = size.minDimension * 0.18f, center = Offset(size.width * 0.35f, size.height * 0.62f), colorFilter = filter)
+            drawRect(Color(0xFF3E7D4A), topLeft = Offset(0f, size.height * 0.8f), size = Size(size.width, size.height * 0.2f), colorFilter = filter)
+          }
+          Spacer(Modifier.height(Space.xs))
+          Text(
+            look.label,
+            style = AppText.Caption1.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal),
+            color = if (selected) colors.primary else colors.onSurfaceVariant,
+            fontSize = 12.sp
+          )
         }
-        Spacer(Modifier.height(Space.xs))
-        Text(
-          look.label,
-          style = AppText.Caption1.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal),
-          color = if (selected) colors.primary else colors.onSurfaceVariant,
-          fontSize = 12.sp
-        )
+      }
+    }
+    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = Space.s)) {
+      FilterChip("No LUT", s.lutName == null, { camera.update { it.copy(lutName = null) } }, Modifier.bounceEntrance(0))
+      camera.luts.names().forEachIndexed { i, name ->
+        FilterChip(name, s.lutName == name, { camera.update { it.copy(lutName = name) } }, Modifier.bounceEntrance(i + 1))
       }
     }
   }

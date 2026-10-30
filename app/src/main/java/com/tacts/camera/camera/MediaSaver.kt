@@ -43,14 +43,14 @@ object MediaSaver {
       .build()
 
   /** Saves an already processed photo (one with a look applied) as JPEG. */
-  fun saveBitmap(context: Context, bitmap: Bitmap, name: String): Uri? {
+  fun saveBitmap(context: Context, bitmap: Bitmap, name: String, quality: Int = 95): Uri? {
     val resolver = context.contentResolver
     val uri = resolver.insert(
       MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
       values(name, "image/jpeg", Environment.DIRECTORY_PICTURES)
     ) ?: return null
     return try {
-      resolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }
+      resolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.JPEG, quality, it) }
       uri
     } catch (e: Exception) {
       resolver.delete(uri, null, null)
