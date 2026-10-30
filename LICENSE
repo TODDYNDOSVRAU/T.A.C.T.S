@@ -66,7 +66,9 @@ NÃO o torna livre nem de código aberto.
 5. COMPONENTES DE TERCEIROS
 
    O Software usa bibliotecas de terceiros (por exemplo Jetpack Compose,
-   Material 3 e AndroidX CameraX), distribuídas sob a Licença Apache 2.0.
+   Material 3 e AndroidX CameraX), distribuídas sob a Licença Apache 2.0, e as
+   fontes Space Grotesk, Inter e JetBrains Mono, sob a SIL Open Font License
+   (docs/licenses/fonts).
    Esses componentes continuam sob as licenças dos seus autores. Esta licença
    cobre apenas o que foi criado pelo titular.
 

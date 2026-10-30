@@ -2,12 +2,8 @@ package com.tacts.camera.ui
 
 import android.content.Intent
 import androidx.camera.view.PreviewView
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -31,21 +27,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Cameraswitch
-import androidx.compose.material.icons.filled.FlashAuto
-import androidx.compose.material.icons.filled.FlashOff
-import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.GridOff
-import androidx.compose.material.icons.filled.GridOn
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Timer10
-import androidx.compose.material.icons.filled.Timer3
-import androidx.compose.material.icons.filled.TimerOff
-import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.rounded.Cameraswitch
+import androidx.compose.material.icons.rounded.FlashAuto
+import androidx.compose.material.icons.rounded.FlashOff
+import androidx.compose.material.icons.rounded.FlashOn
+import androidx.compose.material.icons.rounded.GridOff
+import androidx.compose.material.icons.rounded.GridOn
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Timer10
+import androidx.compose.material.icons.rounded.Timer3
+import androidx.compose.material.icons.rounded.TimerOff
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -63,12 +61,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -79,6 +78,17 @@ import com.tacts.camera.camera.CaptureMode
 import com.tacts.camera.camera.Flash
 import com.tacts.camera.camera.TactsCamera
 import com.tacts.camera.camera.VideoQuality
+import com.tacts.camera.ui.components.FilterChip
+import com.tacts.camera.ui.components.IconAction
+import com.tacts.camera.ui.theme.AppText
+import com.tacts.camera.ui.theme.JetBrainsMono
+import com.tacts.camera.ui.theme.Shapes
+import com.tacts.camera.ui.theme.Space
+import com.tacts.camera.ui.theme.SpaceGrotesk
+import com.tacts.camera.ui.theme.bounceEntrance
+import com.tacts.camera.ui.theme.floatingSurface
+import com.tacts.camera.ui.theme.glassContentColor
+import com.tacts.camera.ui.theme.glassControl
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -111,6 +121,8 @@ fun CameraScreen(startMode: CaptureMode) {
   var countdown by remember { mutableIntStateOf(0) }
   var focusPoint by remember { mutableStateOf<Offset?>(null) }
   var focusTick by remember { mutableIntStateOf(0) }
+  // The capture blink: the frame dims for an instant, as the shutter closes. It is the camera's
+  // answer to the shutter, not decoration, so it stays alongside the one animation T.A.C.T.S. keeps.
   val blink = remember { Animatable(0f) }
 
   LaunchedEffect(focusTick) {
@@ -144,7 +156,7 @@ fun CameraScreen(startMode: CaptureMode) {
     }
   }
 
-  Box(Modifier.fillMaxSize().background(Color.Black)) {
+  Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
     Column(Modifier.fillMaxSize()) {
       TopBar(
         camera = camera,
@@ -161,7 +173,7 @@ fun CameraScreen(startMode: CaptureMode) {
         Box(
           Modifier
             .aspectRatio(ratio, matchHeightConstraintsFirst = maxWidth / maxHeight > ratio)
-            .clip(RoundedCornerShape(4.dp))
+            .clip(Shapes.xs)
         ) {
           AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
           Box(
@@ -182,52 +194,58 @@ fun CameraScreen(startMode: CaptureMode) {
           focusPoint?.let { FocusRing(it) }
           Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = blink.value)))
           if (panel == Panel.PRO) {
-            camera.histogram?.let { Histogram(it, Modifier.align(Alignment.TopStart).padding(10.dp)) }
+            camera.histogram?.let { Histogram(it, Modifier.align(Alignment.TopStart).padding(Space.m)) }
           }
-          if (camera.isRecording) RecordingPill(camera.recordedSeconds, Modifier.align(Alignment.TopCenter).padding(10.dp))
+          if (camera.isRecording) RecordingPill(camera.recordedSeconds, Modifier.align(Alignment.TopCenter).padding(Space.m))
           if (countdown > 0) {
-            Text(
-              "$countdown",
-              color = Color.White,
-              fontSize = 96.sp,
-              fontWeight = FontWeight.Thin,
-              modifier = Modifier.align(Alignment.Center)
-            )
+            // Keyed on the number, so each second drops in with the bounce.
+            androidx.compose.runtime.key(countdown) {
+              Text(
+                "$countdown",
+                style = AppText.Title1.copy(fontFamily = SpaceGrotesk, fontSize = 104.sp, lineHeight = 110.sp, fontWeight = FontWeight.Medium),
+                color = Color.White,
+                modifier = Modifier.align(Alignment.Center).bounceEntrance()
+              )
+            }
           }
           camera.notice?.let {
-            Text(
-              it,
-              color = TextPrimary,
-              fontSize = 13.sp,
-              modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 52.dp)
-                .clip(CircleShape)
-                .background(Ink.copy(alpha = 0.8f))
-                .padding(horizontal = 14.dp, vertical = 8.dp)
-            )
+            androidx.compose.runtime.key(it) {
+              Text(
+                it,
+                style = AppText.Footnote,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                  .align(Alignment.TopCenter)
+                  .padding(top = 56.dp, start = Space.l, end = Space.l)
+                  .bounceEntrance()
+                  .floatingSurface(Shapes.pill)
+                  .padding(horizontal = Space.l, vertical = Space.s)
+              )
+            }
           }
         }
         // Panels float over the bottom of the frame, so opening one never resizes the preview.
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-          ZoomChips(camera, Modifier.padding(bottom = 12.dp))
-          AnimatedVisibility(panel == Panel.PRO, enter = fadeIn(), exit = fadeOut()) {
-            ProPanel(camera, proTab) { proTab = it }
-          }
-          AnimatedVisibility(panel == Panel.LOOKS, enter = fadeIn(), exit = fadeOut()) {
-            LookStrip(camera.look) { camera.changeLook(it) }
+        Column(
+          Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = Space.s),
+          horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+          ZoomChips(camera, Modifier.padding(bottom = Space.s))
+          when (panel) {
+            Panel.PRO -> ProPanel(camera, proTab, onTab = { proTab = it })
+            Panel.LOOKS -> LookStrip(camera.look, onLook = { camera.changeLook(it) })
+            Panel.NONE -> Unit
           }
         }
       }
 
-      Column(Modifier.fillMaxWidth().background(Color.Black).navigationBarsPadding()) {
+      Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
         ModeSwitch(camera)
         Row(
-          Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 14.dp),
+          Modifier.fillMaxWidth().padding(horizontal = Space.xl, vertical = Space.m),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.SpaceBetween
         ) {
-          LastCapture(camera) {
+          LastCapture(camera, Modifier.bounceEntrance(0)) {
             camera.lastCapture?.let { uri ->
               val intent = Intent(Intent.ACTION_VIEW)
                 .setDataAndType(uri, if (camera.lastIsVideo) "video/*" else "image/*")
@@ -235,10 +253,17 @@ fun CameraScreen(startMode: CaptureMode) {
               runCatching { context.startActivity(intent) }
             }
           }
-          ShutterButton(camera, countdown > 0) { shoot() }
-          RoundIcon(Icons.Filled.Cameraswitch, enabled = camera.hasFrontAndBack && !camera.isRecording) {
-            camera.switchLens()
-          }
+          ShutterButton(camera, countdown > 0, Modifier.bounceEntrance(1)) { shoot() }
+          IconAction(
+            Icons.Rounded.Cameraswitch,
+            contentDescription = "Switch camera",
+            onClick = { camera.switchLens() },
+            enabled = camera.hasFrontAndBack && !camera.isRecording,
+            filled = true,
+            size = 52.dp,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.bounceEntrance(2)
+          )
         }
       }
     }
@@ -255,70 +280,80 @@ private fun TopBar(
   onTimer: () -> Unit,
   onPanel: (Panel) -> Unit
 ) {
+  val colors = MaterialTheme.colorScheme
+  fun tint(active: Boolean) = if (active) colors.primary else colors.onSurface
   Row(
-    Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 12.dp, vertical = 6.dp),
+    Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = Space.s, vertical = Space.xs),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween
   ) {
     if (camera.caps.hasFlash) {
-      TopIcon(
+      IconAction(
         when (camera.flash) {
-          Flash.OFF -> Icons.Filled.FlashOff
-          Flash.AUTO -> Icons.Filled.FlashAuto
-          Flash.ON -> Icons.Filled.FlashOn
+          Flash.OFF -> Icons.Rounded.FlashOff
+          Flash.AUTO -> Icons.Rounded.FlashAuto
+          Flash.ON -> Icons.Rounded.FlashOn
         },
-        active = camera.flash != Flash.OFF,
-        onClick = { camera.cycleFlash() }
+        contentDescription = "Flash ${camera.flash.name.lowercase()}",
+        onClick = { camera.cycleFlash() },
+        tint = tint(camera.flash != Flash.OFF),
+        modifier = Modifier.bounceEntrance(0)
       )
     } else {
-      Spacer(Modifier.size(40.dp))
+      Spacer(Modifier.size(48.dp))
     }
     if (camera.mode == CaptureMode.PHOTO) {
-      TopIcon(
-        when (timer) { 3 -> Icons.Filled.Timer3; 10 -> Icons.Filled.Timer10; else -> Icons.Filled.TimerOff },
-        active = timer > 0,
-        onClick = onTimer
+      IconAction(
+        when (timer) { 3 -> Icons.Rounded.Timer3; 10 -> Icons.Rounded.Timer10; else -> Icons.Rounded.TimerOff },
+        contentDescription = if (timer == 0) "Timer off" else "Timer $timer seconds",
+        onClick = onTimer,
+        tint = tint(timer > 0),
+        modifier = Modifier.bounceEntrance(1)
       )
     } else {
-      TopText(camera.videoQuality.label, active = false) {
+      TagToggle(camera.videoQuality.label, selected = false, index = 1) {
         val all = VideoQuality.entries
         camera.changeVideoQuality(all[(camera.videoQuality.ordinal + 1) % all.size])
       }
     }
-    TopIcon(if (grid) Icons.Filled.GridOn else Icons.Filled.GridOff, active = grid, onClick = onGrid)
-    TopIcon(Icons.Filled.Palette, active = panel == Panel.LOOKS || camera.look.ordinal != 0) { onPanel(Panel.LOOKS) }
+    IconAction(
+      if (grid) Icons.Rounded.GridOn else Icons.Rounded.GridOff,
+      contentDescription = "Grid",
+      onClick = onGrid,
+      tint = tint(grid),
+      modifier = Modifier.bounceEntrance(2)
+    )
+    IconAction(
+      Icons.Rounded.Palette,
+      contentDescription = "Looks",
+      onClick = { onPanel(Panel.LOOKS) },
+      tint = tint(panel == Panel.LOOKS || camera.look.ordinal != 0),
+      modifier = Modifier.bounceEntrance(3)
+    )
     if (camera.mode == CaptureMode.PHOTO && camera.caps.rawSupported) {
-      TopText("RAW", active = camera.manual.raw) { camera.updateManual { it.copy(raw = !it.raw) } }
+      TagToggle("RAW", selected = camera.manual.raw, index = 4) { camera.updateManual { it.copy(raw = !it.raw) } }
     }
-    TopText("PRO", active = panel == Panel.PRO || !camera.manual.isAllAuto) { onPanel(Panel.PRO) }
+    TagToggle("PRO", selected = panel == Panel.PRO || !camera.manual.isAllAuto, index = 5) { onPanel(Panel.PRO) }
   }
 }
 
+/** A short on/off label in the top bar (RAW, PRO, the video quality), on the quiet control fill. */
 @Composable
-private fun TopIcon(icon: ImageVector, active: Boolean, onClick: () -> Unit) {
+private fun TagToggle(text: String, selected: Boolean, index: Int, onClick: () -> Unit) {
   Box(
-    Modifier.size(40.dp).clip(CircleShape).clickable(onClick = onClick),
+    Modifier
+      .size(width = 56.dp, height = 48.dp)
+      .bounceEntrance(index)
+      .toggleable(value = selected, role = Role.Switch, onValueChange = { onClick() }),
     contentAlignment = Alignment.Center
   ) {
-    Icon(icon, contentDescription = null, tint = if (active) Amber else TextPrimary, modifier = Modifier.size(22.dp))
+    Text(
+      text,
+      style = AppText.Caption1.copy(fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold),
+      color = glassContentColor(selected),
+      modifier = Modifier.glassControl(Shapes.xs, selected).padding(horizontal = Space.s, vertical = Space.xs)
+    )
   }
-}
-
-@Composable
-private fun TopText(text: String, active: Boolean, onClick: () -> Unit) {
-  Text(
-    text,
-    color = if (active) Ink else TextPrimary,
-    fontSize = 12.sp,
-    fontWeight = FontWeight.Bold,
-    letterSpacing = 1.sp,
-    modifier = Modifier
-      .clip(RoundedCornerShape(6.dp))
-      .background(if (active) Amber else Color.Transparent)
-      .border(1.dp, if (active) Amber else TextSecondary, RoundedCornerShape(6.dp))
-      .clickable(onClick = onClick)
-      .padding(horizontal = 8.dp, vertical = 4.dp)
-  )
 }
 
 @Composable
@@ -337,51 +372,53 @@ private fun GridOverlay() {
 @Composable
 private fun FocusRing(at: Offset) {
   val half = with(LocalDensity.current) { 36.dp.toPx() }
-  Box(
-    Modifier
-      .offset { IntOffset((at.x - half).roundToInt(), (at.y - half).roundToInt()) }
-      .size(72.dp)
-      .border(1.5.dp, Amber, RoundedCornerShape(6.dp))
-  )
+  // Keyed on the point, so every tap drops a fresh ring in with the bounce.
+  androidx.compose.runtime.key(at) {
+    Box(
+      Modifier
+        .offset { IntOffset((at.x - half).roundToInt(), (at.y - half).roundToInt()) }
+        .bounceEntrance()
+        .size(72.dp)
+        .border(1.5.dp, MaterialTheme.colorScheme.primary, Shapes.xs)
+    )
+  }
 }
 
 @Composable
 private fun Histogram(bins: FloatArray, modifier: Modifier) {
+  val bar = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
   Canvas(
     modifier
+      .bounceEntrance()
       .size(width = 128.dp, height = 52.dp)
-      .clip(RoundedCornerShape(6.dp))
-      .background(Ink.copy(alpha = 0.55f))
-      .padding(4.dp)
+      .floatingSurface(Shapes.s)
+      .padding(Space.xs)
   ) {
     val w = size.width / bins.size
     bins.forEachIndexed { i, v ->
       val h = v * size.height
-      drawRect(
-        Color.White.copy(alpha = 0.75f),
-        topLeft = Offset(i * w, size.height - h),
-        size = Size(w + 0.5f, h)
-      )
+      drawRect(bar, topLeft = Offset(i * w, size.height - h), size = Size(w + 0.5f, h))
     }
   }
 }
 
 @Composable
 private fun RecordingPill(seconds: Long, modifier: Modifier) {
+  val colors = MaterialTheme.colorScheme
   Row(
     modifier
-      .clip(CircleShape)
-      .background(Record)
-      .padding(horizontal = 12.dp, vertical = 5.dp),
+      .bounceEntrance()
+      .clip(Shapes.pill)
+      .background(colors.error)
+      .padding(horizontal = Space.m, vertical = Space.xs),
     verticalAlignment = Alignment.CenterVertically
   ) {
-    Box(Modifier.size(8.dp).clip(CircleShape).background(Color.White))
-    Spacer(Modifier.width(6.dp))
+    Box(Modifier.size(8.dp).clip(CircleShape).background(colors.onError))
+    Spacer(Modifier.width(Space.s))
     Text(
       "%02d:%02d".format(seconds / 60, seconds % 60),
-      color = Color.White,
-      fontSize = 14.sp,
-      fontFamily = FontFamily.Monospace
+      style = AppText.Subhead.copy(fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium),
+      color = colors.onError
     )
   }
 }
@@ -393,29 +430,29 @@ private fun ZoomChips(camera: TactsCamera, modifier: Modifier) {
     listOf(1f, 2f, 5f, 10f).filter { it <= camera.maxZoom + 0.01f }.forEach { add(it) }
   }
   if (presets.size < 2) return
+  val colors = MaterialTheme.colorScheme
   val active = presets.lastOrNull { it <= camera.zoomRatio + 0.01f } ?: presets.first()
   Row(
-    modifier.clip(CircleShape).background(Ink.copy(alpha = 0.55f)).padding(4.dp),
-    horizontalArrangement = Arrangement.spacedBy(4.dp)
+    modifier.bounceEntrance().floatingSurface(Shapes.pill).padding(Space.xs),
+    horizontalArrangement = Arrangement.spacedBy(Space.xs)
   ) {
-    presets.forEach { p ->
+    presets.forEachIndexed { i, p ->
       val selected = p == active
       val shown = if (selected) camera.zoomRatio else p
       val text = if (shown < 1f || shown % 1f > 0.05f) "%.1f".format(shown) else "${shown.roundToInt()}"
-      val size by animateDpAsState(if (selected) 40.dp else 32.dp, label = "zoom")
       Box(
         Modifier
-          .size(size)
-          .clip(CircleShape)
-          .background(if (selected) InkHigh else Color.Transparent)
-          .clickable { camera.setZoom(p) },
+          .bounceEntrance(i)
+          .size(40.dp)
+          .glassControl(CircleShape, selected)
+          .clickable(role = Role.Button) { camera.setZoom(p) }
+          .semantics { contentDescription = "Zoom $text times" },
         contentAlignment = Alignment.Center
       ) {
         Text(
           if (selected) "$text×" else text,
-          color = if (selected) Amber else TextPrimary,
-          fontSize = if (selected) 12.sp else 11.sp,
-          fontWeight = FontWeight.SemiBold
+          style = AppText.Caption1.copy(fontFamily = JetBrainsMono, fontWeight = FontWeight.SemiBold),
+          color = if (selected) colors.primary else colors.onSurface
         )
       }
     }
@@ -425,47 +462,44 @@ private fun ZoomChips(camera: TactsCamera, modifier: Modifier) {
 @Composable
 private fun ModeSwitch(camera: TactsCamera) {
   Row(
-    Modifier.fillMaxWidth().padding(top = 12.dp),
-    horizontalArrangement = Arrangement.Center
+    Modifier.fillMaxWidth().padding(top = Space.s),
+    horizontalArrangement = Arrangement.spacedBy(Space.xs, Alignment.CenterHorizontally)
   ) {
-    CaptureMode.entries.forEach { m ->
-      Text(
-        m.name,
-        color = if (camera.mode == m) Amber else TextSecondary,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = 1.5.sp,
-        modifier = Modifier
-          .clip(CircleShape)
-          .clickable(enabled = !camera.isRecording) { camera.changeMode(m) }
-          .padding(horizontal = 16.dp, vertical = 6.dp)
+    CaptureMode.entries.forEachIndexed { i, m ->
+      FilterChip(
+        label = if (m == CaptureMode.PHOTO) "Photo" else "Video",
+        selected = camera.mode == m,
+        onClick = { camera.changeMode(m) },
+        enabled = !camera.isRecording,
+        modifier = Modifier.bounceEntrance(i)
       )
     }
   }
 }
 
 @Composable
-private fun ShutterButton(camera: TactsCamera, waiting: Boolean, onClick: () -> Unit) {
+private fun ShutterButton(camera: TactsCamera, waiting: Boolean, modifier: Modifier, onClick: () -> Unit) {
+  val colors = MaterialTheme.colorScheme
   val video = camera.mode == CaptureMode.VIDEO
-  val inner by animateDpAsState(if (camera.isRecording) 28.dp else 62.dp, label = "shutter")
-  val corner by animateDpAsState(if (camera.isRecording) 6.dp else 31.dp, label = "corner")
+  val recording = camera.isRecording
   Box(
-    Modifier
+    modifier
       .size(78.dp)
-      .border(4.dp, Color.White, CircleShape)
+      .border(4.dp, colors.onSurface, CircleShape)
       .clip(CircleShape)
-      .clickable(enabled = !waiting) { onClick() },
+      .clickable(enabled = !waiting, role = Role.Button, onClick = onClick)
+      .semantics { contentDescription = if (video) (if (recording) "Stop recording" else "Record") else "Take photo" },
     contentAlignment = Alignment.Center
   ) {
     Box(
       Modifier
-        .size(inner)
-        .clip(RoundedCornerShape(corner))
+        .size(if (recording) 28.dp else 62.dp)
+        .clip(if (recording) RoundedCornerShape(6.dp) else CircleShape)
         .background(
           when {
-            video -> Record
-            camera.busy || waiting -> Color.White.copy(alpha = 0.5f)
-            else -> Color.White
+            video -> colors.error
+            camera.busy || waiting -> colors.onSurface.copy(alpha = 0.5f)
+            else -> colors.onSurface
           }
         )
     )
@@ -473,35 +507,31 @@ private fun ShutterButton(camera: TactsCamera, waiting: Boolean, onClick: () -> 
 }
 
 @Composable
-private fun LastCapture(camera: TactsCamera, onClick: () -> Unit) {
+private fun LastCapture(camera: TactsCamera, modifier: Modifier, onClick: () -> Unit) {
+  val colors = MaterialTheme.colorScheme
   Box(
-    Modifier
+    modifier
       .size(52.dp)
-      .clip(RoundedCornerShape(12.dp))
-      .background(InkHigh)
-      .border(1.5.dp, TextPrimary.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-      .clickable(enabled = camera.lastCapture != null, onClick = onClick),
+      .clip(Shapes.s)
+      .background(colors.surfaceContainer)
+      .border(1.5.dp, colors.onSurface.copy(alpha = 0.6f), Shapes.s)
+      .clickable(enabled = camera.lastCapture != null, role = Role.Button, onClick = onClick)
+      .semantics { contentDescription = "Open last capture" },
     contentAlignment = Alignment.Center
   ) {
     val thumb = camera.lastThumb
     if (thumb != null) {
-      Image(thumb.asImageBitmap(), contentDescription = "Last capture", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+      // Keyed on the picture, so each new capture drops into place.
+      androidx.compose.runtime.key(thumb) {
+        Image(
+          thumb.asImageBitmap(),
+          contentDescription = null,
+          contentScale = ContentScale.Crop,
+          modifier = Modifier.fillMaxSize().bounceEntrance()
+        )
+      }
     } else if (camera.lastCapture != null && camera.lastIsVideo) {
-      Icon(Icons.Filled.Videocam, contentDescription = null, tint = TextPrimary)
+      Icon(Icons.Rounded.Videocam, contentDescription = null, tint = colors.onSurface)
     }
-  }
-}
-
-@Composable
-private fun RoundIcon(icon: ImageVector, enabled: Boolean, onClick: () -> Unit) {
-  Box(
-    Modifier
-      .size(52.dp)
-      .clip(CircleShape)
-      .background(InkHigh)
-      .clickable(enabled = enabled, onClick = onClick),
-    contentAlignment = Alignment.Center
-  ) {
-    Icon(icon, contentDescription = "Switch camera", tint = if (enabled) TextPrimary else TextSecondary.copy(alpha = 0.4f))
   }
 }

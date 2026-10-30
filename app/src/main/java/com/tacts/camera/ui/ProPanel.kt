@@ -1,9 +1,7 @@
 package com.tacts.camera.ui
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,8 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -31,7 +29,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,6 +40,15 @@ import com.tacts.camera.camera.focusLabel
 import com.tacts.camera.camera.nearestIndex
 import com.tacts.camera.camera.shutterLabel
 import com.tacts.camera.filters.Look
+import com.tacts.camera.ui.components.FilterChip
+import com.tacts.camera.ui.components.highlightClickable
+import com.tacts.camera.ui.theme.AppText
+import com.tacts.camera.ui.theme.JetBrainsMono
+import com.tacts.camera.ui.theme.Shapes
+import com.tacts.camera.ui.theme.Space
+import com.tacts.camera.ui.theme.bounceEntrance
+import com.tacts.camera.ui.theme.floatingSurface
+import com.tacts.camera.ui.theme.glassControl
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -49,43 +56,34 @@ enum class ProTab(val label: String) { EV("EV"), ISO("ISO"), SHUTTER("S"), FOCUS
 
 /** The manual controls: a row of value chips, and a dial for the selected one under it. */
 @Composable
-fun ProPanel(camera: TactsCamera, tab: ProTab, onTab: (ProTab) -> Unit) {
+fun ProPanel(camera: TactsCamera, tab: ProTab, onTab: (ProTab) -> Unit, modifier: Modifier = Modifier) {
   val m = camera.manual
   val caps = camera.caps
   val live = camera.live
 
   Column(
-    Modifier
+    modifier
       .fillMaxWidth()
-      .background(Ink.copy(alpha = 0.72f))
-      .padding(horizontal = 16.dp, vertical = 10.dp)
+      .padding(horizontal = Space.s)
+      .bounceEntrance()
+      .floatingSurface(Shapes.l)
+      .padding(horizontal = Space.m, vertical = Space.m)
   ) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-      ProChip(
-        ProTab.EV,
-        evLabel(m.evIndex, caps.evStep),
-        manual = m.evIndex != 0,
-        selected = tab == ProTab.EV,
-        onTab
-      )
-      ProChip(ProTab.ISO, if (m.exposureAuto) "${live.iso ?: "–"}" else "${m.iso}", !m.exposureAuto, tab == ProTab.ISO, onTab)
+      ProChip(ProTab.EV, evLabel(m.evIndex, caps.evStep), m.evIndex != 0, tab == ProTab.EV, 0, onTab)
+      ProChip(ProTab.ISO, if (m.exposureAuto) "${live.iso ?: "–"}" else "${m.iso}", !m.exposureAuto, tab == ProTab.ISO, 1, onTab)
       ProChip(
         ProTab.SHUTTER,
         if (m.exposureAuto) live.shutterNs?.let(::shutterLabel) ?: "–" else shutterLabel(m.shutterNs),
         !m.exposureAuto,
         tab == ProTab.SHUTTER,
+        2,
         onTab
       )
-      ProChip(
-        ProTab.FOCUS,
-        if (m.focusAuto) "AF" else focusLabel(m.focusDiopters),
-        !m.focusAuto,
-        tab == ProTab.FOCUS,
-        onTab
-      )
-      ProChip(ProTab.WB, m.whiteBalance.label.take(4), m.whiteBalance != WhiteBalance.AUTO, tab == ProTab.WB, onTab)
+      ProChip(ProTab.FOCUS, if (m.focusAuto) "AF" else focusLabel(m.focusDiopters), !m.focusAuto, tab == ProTab.FOCUS, 3, onTab)
+      ProChip(ProTab.WB, m.whiteBalance.label.take(4), m.whiteBalance != WhiteBalance.AUTO, tab == ProTab.WB, 4, onTab)
     }
-    Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.height(Space.s))
     when (tab) {
       ProTab.EV -> EvDial(camera, m)
       ProTab.ISO -> if (caps.isoValues.isEmpty()) Unsupported() else ExposureDial(
@@ -107,12 +105,15 @@ fun ProPanel(camera: TactsCamera, tab: ProTab, onTab: (ProTab) -> Unit) {
       ProTab.FOCUS -> if (caps.minFocusDiopters <= 0f) Unsupported("This lens has fixed focus") else FocusDial(camera, m)
       ProTab.WB -> Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(Space.xs)
       ) {
-        caps.whiteBalances.forEach { wb ->
-          Pill(wb.label, selected = m.whiteBalance == wb, accent = if (wb == WhiteBalance.AUTO) Ice else Amber) {
-            camera.updateManual { it.copy(whiteBalance = wb) }
-          }
+        caps.whiteBalances.forEachIndexed { i, wb ->
+          FilterChip(
+            wb.label,
+            selected = m.whiteBalance == wb,
+            onClick = { camera.updateManual { it.copy(whiteBalance = wb) } },
+            modifier = Modifier.bounceEntrance(i)
+          )
         }
       }
     }
@@ -124,23 +125,23 @@ private fun evLabel(index: Int, step: Float): String {
   return if (abs(ev) < 0.01f) "±0" else (if (ev > 0) "+" else "−") + "%.1f".format(abs(ev))
 }
 
+/** One manual value: its name over its reading, the reading in the accent once it is set by hand. */
 @Composable
-private fun ProChip(tab: ProTab, value: String, manual: Boolean, selected: Boolean, onTab: (ProTab) -> Unit) {
+private fun ProChip(tab: ProTab, value: String, manual: Boolean, selected: Boolean, index: Int, onTab: (ProTab) -> Unit) {
+  val colors = MaterialTheme.colorScheme
   Column(
     Modifier
-      .clip(RoundedCornerShape(10.dp))
-      .background(if (selected) InkHigh else Color.Transparent)
-      .clickable { onTab(tab) }
-      .padding(horizontal = 10.dp, vertical = 6.dp),
+      .bounceEntrance(index)
+      .glassControl(Shapes.s, selected)
+      .selectable(selected = selected, role = Role.Tab) { onTab(tab) }
+      .padding(horizontal = Space.m, vertical = Space.s),
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
-    Text(tab.label, color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp)
+    Text(tab.label, style = AppText.Caption2.copy(fontWeight = FontWeight.SemiBold), color = colors.onSurfaceVariant)
     Text(
       value,
-      color = if (manual) Amber else TextPrimary,
-      fontSize = 14.sp,
-      fontFamily = FontFamily.Monospace,
-      fontWeight = FontWeight.Medium
+      style = AppText.Subhead.copy(fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium),
+      color = if (manual) colors.primary else colors.onSurface
     )
   }
 }
@@ -151,7 +152,7 @@ private fun EvDial(camera: TactsCamera, m: ManualSettings) {
   if (caps.evRange.first == caps.evRange.last) return Unsupported("This camera has no exposure compensation")
   if (!m.exposureAuto) return Unsupported("Exposure compensation works with auto ISO and shutter")
   DialRow(label = "EV ${evLabel(m.evIndex, caps.evStep)}", leading = {
-    Pill("0", selected = m.evIndex == 0, accent = Ice) { camera.updateManual { it.copy(evIndex = 0) } }
+    FilterChip("0", selected = m.evIndex == 0, onClick = { camera.updateManual { it.copy(evIndex = 0) } })
   }) {
     val span = caps.evRange.last - caps.evRange.first
     Slider(
@@ -174,7 +175,7 @@ private fun ExposureDial(
   onIndex: (Int) -> Unit
 ) {
   DialRow(label = if (auto) "AUTO" else label(index), leading = {
-    Pill("A", selected = auto, accent = Ice) { camera.updateManual { it.copy(exposureAuto = !it.exposureAuto) } }
+    FilterChip("A", selected = auto, onClick = { camera.updateManual { it.copy(exposureAuto = !it.exposureAuto) } })
   }) {
     Slider(
       value = index.toFloat(),
@@ -193,7 +194,7 @@ private fun ExposureDial(
 private fun FocusDial(camera: TactsCamera, m: ManualSettings) {
   val max = camera.caps.minFocusDiopters
   DialRow(label = if (m.focusAuto) "AUTO" else focusLabel(m.focusDiopters), leading = {
-    Pill("AF", selected = m.focusAuto, accent = Ice) { camera.updateManual { it.copy(focusAuto = !it.focusAuto) } }
+    FilterChip("AF", selected = m.focusAuto, onClick = { camera.updateManual { it.copy(focusAuto = !it.focusAuto) } })
   }) {
     // Left is infinity, right is the closest the lens can focus.
     Slider(
@@ -207,79 +208,84 @@ private fun FocusDial(camera: TactsCamera, m: ManualSettings) {
 
 @Composable
 private fun DialRow(label: String, leading: @Composable () -> Unit, slider: @Composable () -> Unit) {
-  Row(verticalAlignment = Alignment.CenterVertically) {
+  Row(Modifier.bounceEntrance(5), verticalAlignment = Alignment.CenterVertically) {
     leading()
-    Spacer(Modifier.width(10.dp))
+    Spacer(Modifier.width(Space.s))
     Box(Modifier.weight(1f)) { slider() }
-    Spacer(Modifier.width(10.dp))
+    Spacer(Modifier.width(Space.s))
     Text(
       label,
-      color = TextPrimary,
-      fontSize = 13.sp,
-      fontFamily = FontFamily.Monospace,
-      modifier = Modifier.width(72.dp)
+      style = AppText.Footnote.copy(fontFamily = JetBrainsMono),
+      color = MaterialTheme.colorScheme.onSurface,
+      modifier = Modifier.width(76.dp)
     )
   }
 }
 
 @Composable
-private fun sliderColors(manual: Boolean) = SliderDefaults.colors(
-  thumbColor = if (manual) Amber else TextPrimary,
-  activeTrackColor = if (manual) Amber else Ice,
-  inactiveTrackColor = InkLine,
-  activeTickColor = Color.Transparent,
-  inactiveTickColor = Color.Transparent
-)
-
-@Composable
-private fun Unsupported(text: String = "This camera has no manual sensor control") {
-  Text(text, color = TextSecondary, fontSize = 13.sp, modifier = Modifier.padding(vertical = 14.dp))
+private fun sliderColors(manual: Boolean): androidx.compose.material3.SliderColors {
+  val colors = MaterialTheme.colorScheme
+  return SliderDefaults.colors(
+    thumbColor = if (manual) colors.primary else colors.onSurface,
+    activeTrackColor = if (manual) colors.primary else colors.onSurface.copy(alpha = 0.6f),
+    inactiveTrackColor = colors.outline,
+    activeTickColor = Color.Transparent,
+    inactiveTickColor = Color.Transparent
+  )
 }
 
 @Composable
-fun Pill(text: String, selected: Boolean, accent: Color = Ice, onClick: () -> Unit) {
+private fun Unsupported(text: String = "This camera has no manual sensor control") {
   Text(
     text,
-    color = if (selected) Ink else TextPrimary,
-    fontSize = 13.sp,
-    fontWeight = FontWeight.SemiBold,
-    modifier = Modifier
-      .clip(CircleShape)
-      .background(if (selected) accent else InkHigh)
-      .clickable(onClick = onClick)
-      .padding(horizontal = 12.dp, vertical = 7.dp)
+    style = AppText.Footnote,
+    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    modifier = Modifier.bounceEntrance(5).padding(vertical = Space.m, horizontal = Space.xs)
   )
 }
 
 /** The look picker: a swatch for each look, drawn through its own colour matrix. */
 @Composable
-fun LookStrip(current: Look, onLook: (Look) -> Unit) {
+fun LookStrip(current: Look, onLook: (Look) -> Unit, modifier: Modifier = Modifier) {
+  val colors = MaterialTheme.colorScheme
   Row(
-    Modifier
+    modifier
       .fillMaxWidth()
-      .background(Ink.copy(alpha = 0.72f))
+      .padding(horizontal = Space.s)
+      .bounceEntrance()
+      .floatingSurface(Shapes.l)
       .horizontalScroll(rememberScrollState())
-      .padding(horizontal = 16.dp, vertical = 12.dp),
-    horizontalArrangement = Arrangement.spacedBy(14.dp)
+      .padding(horizontal = Space.s, vertical = Space.s),
+    horizontalArrangement = Arrangement.spacedBy(Space.xxs)
   ) {
-    Look.entries.forEach { look ->
+    Look.entries.forEachIndexed { i, look ->
+      val selected = look == current
       val filter = look.matrix()?.let { ColorFilter.colorMatrix(ColorMatrix(it.array)) }
       Column(
-        Modifier.clickable { onLook(look) },
+        Modifier
+          .bounceEntrance(i)
+          .clip(Shapes.m)
+          .highlightClickable(role = Role.Tab) { onLook(look) }
+          .padding(Space.xs),
         horizontalAlignment = Alignment.CenterHorizontally
       ) {
         Canvas(
           Modifier
-            .size(48.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .border(2.dp, if (look == current) Ice else Color.Transparent, RoundedCornerShape(12.dp))
+            .size(52.dp)
+            .clip(Shapes.s)
+            .border(2.dp, if (selected) colors.primary else Color.Transparent, Shapes.s)
         ) {
           drawRect(SWATCH, size = size, colorFilter = filter)
           drawCircle(Color(0xFFF4D1B0), radius = size.minDimension * 0.18f, center = Offset(size.width * 0.35f, size.height * 0.62f), colorFilter = filter)
           drawRect(Color(0xFF3E7D4A), topLeft = Offset(0f, size.height * 0.8f), size = Size(size.width, size.height * 0.2f), colorFilter = filter)
         }
-        Spacer(Modifier.height(4.dp))
-        Text(look.label, color = if (look == current) Ice else TextSecondary, fontSize = 11.sp)
+        Spacer(Modifier.height(Space.xs))
+        Text(
+          look.label,
+          style = AppText.Caption1.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal),
+          color = if (selected) colors.primary else colors.onSurfaceVariant,
+          fontSize = 12.sp
+        )
       }
     }
   }

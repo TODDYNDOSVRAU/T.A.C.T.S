@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PhotoCamera
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,26 +33,35 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.em
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.tacts.camera.camera.CaptureMode
 import com.tacts.camera.ui.CameraScreen
-import com.tacts.camera.ui.Ink
-import com.tacts.camera.ui.TactsTheme
-import com.tacts.camera.ui.TextPrimary
-import com.tacts.camera.ui.TextSecondary
+import com.tacts.camera.ui.components.PrimaryButton
+import com.tacts.camera.ui.components.TextAction
+import com.tacts.camera.ui.theme.AppMotion
+import com.tacts.camera.ui.theme.AppText
+import com.tacts.camera.ui.theme.JetBrainsMono
+import com.tacts.camera.ui.theme.Space
+import com.tacts.camera.ui.theme.TactsTheme
+import com.tacts.camera.ui.theme.bounceEntrance
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     enableEdgeToEdge()
+    AppMotion.readSystem(this)
     val startMode = if (intent?.action == android.provider.MediaStore.INTENT_ACTION_VIDEO_CAMERA) CaptureMode.VIDEO
     else CaptureMode.PHOTO
     setContent { TactsTheme { PermissionGate { CameraScreen(startMode) } } }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    // The system animation setting may have changed while the app was away.
+    AppMotion.readSystem(this)
   }
 }
 
@@ -84,33 +95,46 @@ private fun PermissionGate(content: @Composable () -> Unit) {
     content()
     return
   }
+  val colors = MaterialTheme.colorScheme
   Column(
-    modifier = Modifier.fillMaxSize().background(Ink).padding(32.dp),
+    modifier = Modifier.fillMaxSize().background(colors.background).padding(horizontal = Space.xxl),
     verticalArrangement = Arrangement.Center,
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
-    Text("T.A.C.T.S.", color = TextPrimary, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+    Text("T.A.C.T.S.", style = AppText.LargeTitle, color = colors.onBackground, modifier = Modifier.bounceEntrance(0))
+    Spacer(Modifier.height(Space.xs))
     Text(
       "TOTTALLY ACCURATE CAMERA TECHNOLOGY SYSTEM",
-      color = TextSecondary,
-      fontSize = 11.sp,
-      letterSpacing = 1.sp,
-      textAlign = TextAlign.Center
+      style = AppText.Caption2.copy(fontFamily = JetBrainsMono, letterSpacing = 0.08.em),
+      color = colors.onSurfaceVariant,
+      textAlign = TextAlign.Center,
+      modifier = Modifier.bounceEntrance(1)
     )
-    Spacer(Modifier.height(32.dp))
+    Spacer(Modifier.height(Space.section))
     Text(
       "The camera needs access to the camera. The microphone is used for sound in videos.",
-      color = TextSecondary,
-      textAlign = TextAlign.Center
+      style = AppText.Body,
+      color = colors.onSurfaceVariant,
+      textAlign = TextAlign.Center,
+      modifier = Modifier.bounceEntrance(2)
     )
-    Spacer(Modifier.height(24.dp))
-    Button(onClick = { launcher.launch(requiredPermissions) }) { Text("Allow camera") }
+    Spacer(Modifier.height(Space.xl))
+    PrimaryButton(
+      "Allow camera",
+      onClick = { launcher.launch(requiredPermissions) },
+      icon = Icons.Rounded.PhotoCamera,
+      modifier = Modifier.fillMaxWidth().bounceEntrance(3)
+    )
     if (asked) {
-      TextButton(onClick = {
-        context.startActivity(
-          Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
-        )
-      }) { Text("Open app settings") }
+      TextAction(
+        "Open app settings",
+        onClick = {
+          context.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+          )
+        },
+        modifier = Modifier.bounceEntrance(4)
+      )
     }
   }
 }

@@ -44,6 +44,12 @@
 - Natural, Vivid, Warm, Cool, Fade, Mono, Noir and Sepia
 - The live preview shows the look exactly as the saved photo will have it
 
+**Design**
+- The T.A.R.K.A.S. design system: T.A.L. palette with the ice accent, on a pure black page
+- Space Grotesk for titles, Inter for the interface, JetBrains Mono for readings (ISO, shutter, zoom, timer)
+- Controls, panels and readings bounce into place with the T.A.R.K.A.S. "Quicar" animation
+- Follows the system's "remove animations" setting
+
 ## Installation
 
 Download the APK from the [latest release](https://github.com/TODDYNDOSVRAU/T.A.C.T.S/releases/latest) and install it. Updates install over the previous version.
@@ -66,7 +72,7 @@ Looks on video, night and HDR modes, a level indicator, focus peaking and zebras
 
 ## Tech
 
-Kotlin · Jetpack Compose · Material 3 · CameraX (core, camera2 interop, video, view)
+Kotlin · Jetpack Compose · Material 3 · CameraX (core, camera2 interop, video, view) · Space Grotesk, Inter and JetBrains Mono ([OFL](docs/licenses/fonts))
 
 | File | What it does |
 | --- | --- |
@@ -76,6 +82,7 @@ Kotlin · Jetpack Compose · Material 3 · CameraX (core, camera2 interop, video
 | [`camera/MediaSaver.kt`](app/src/main/java/com/tacts/camera/camera/MediaSaver.kt) | Saving to the gallery and thumbnails |
 | [`filters/Looks.kt`](app/src/main/java/com/tacts/camera/filters/Looks.kt) | The looks as colour matrices |
 | [`ui/CameraScreen.kt`](app/src/main/java/com/tacts/camera/ui/CameraScreen.kt), [`ui/ProPanel.kt`](app/src/main/java/com/tacts/camera/ui/ProPanel.kt) | The camera interface |
+| [`ui/theme/`](app/src/main/java/com/tacts/camera/ui/theme), [`ui/components/Design.kt`](app/src/main/java/com/tacts/camera/ui/components/Design.kt) | Colours, type, tokens, the bounce and the shared components, from T.A.R.K.A.S. |
 
 ## License
 
