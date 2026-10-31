@@ -129,7 +129,14 @@ import com.tacts.camera.ui.theme.Shapes
 import com.tacts.camera.ui.theme.Space
 import com.tacts.camera.ui.theme.SpaceGrotesk
 import com.tacts.camera.ui.theme.AppMotion
-import com.tacts.camera.ui.theme.bounceEntrance
+import com.tacts.camera.ui.theme.entrance
+import com.tacts.camera.ui.theme.Motion
+import com.tacts.camera.ui.theme.panelSwap
+import com.tacts.camera.ui.theme.rowEnter
+import com.tacts.camera.ui.theme.rowExit
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import com.tacts.camera.ui.theme.placedMark
 import com.tacts.camera.ui.theme.floatingSurface
 import com.tacts.camera.ui.theme.glassContentColor
 import com.tacts.camera.ui.theme.glassControl
@@ -307,7 +314,7 @@ fun CameraScreen(startMode: CaptureMode?) {
             "$countdown",
             style = AppText.Title1.copy(fontFamily = SpaceGrotesk, fontSize = 104.sp, lineHeight = 110.sp, fontWeight = FontWeight.Medium),
             color = Color.White,
-            modifier = Modifier.align(Alignment.Center).bounceEntrance()
+            modifier = Modifier.align(Alignment.Center).entrance()
           )
         }
       }
@@ -320,7 +327,7 @@ fun CameraScreen(startMode: CaptureMode?) {
             modifier = Modifier
               .align(Alignment.Center)
               .padding(horizontal = Space.xl)
-              .bounceEntrance()
+              .entrance()
               .floatingSurface(Shapes.m)
               .padding(horizontal = Space.l, vertical = Space.s)
           )
@@ -332,7 +339,11 @@ fun CameraScreen(startMode: CaptureMode?) {
         Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(bottom = Space.s),
         horizontalAlignment = Alignment.CenterHorizontally
       ) {
-        when (panel) {
+        // The panels over the shutter swap along one path, and the space they take resizes smoothly.
+        val sheet = if (panel == Panel.LOOKS || panel == Panel.MONITOR || panel == Panel.CONTROLS) panel else Panel.NONE
+        val rise = with(LocalDensity.current) { Motion.Rise.roundToPx() }
+        AnimatedContent(sheet, transitionSpec = { panelSwap(rise, AppMotion.reduced) }, contentAlignment = Alignment.BottomCenter, label = "sheet") { shown ->
+        when (shown) {
           Panel.LOOKS -> LookStrip(camera)
           Panel.MONITOR -> MonitorPanel(camera)
           Panel.CONTROLS -> ControlsSheet(
@@ -351,7 +362,8 @@ fun CameraScreen(startMode: CaptureMode?) {
           // A lens locked in Settings ignores the capsule's lens changes, so it is not offered then.
           else -> if (s.mode != CaptureMode.RAW_VIDEO && s.physicalCameraId == null) ZoomControl(camera) { ZoomChips(camera, it) }
         }
-        if (proRow) {
+        }
+        AnimatedVisibility(proRow, enter = rowEnter(AppMotion.reduced), exit = rowExit(AppMotion.reduced)) {
           ProReadoutRow(
             camera,
             selected = proTab.takeIf { panel == Panel.PRO },
@@ -375,23 +387,24 @@ fun CameraScreen(startMode: CaptureMode?) {
             "ƒ",
             contentDescription = "Manual controls",
             tint = if (proRow || !s.isAllAuto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.bounceEntrance(0)
+            modifier = Modifier.entrance(0)
           ) {
             proRow = !proRow
             if (!proRow && panel == Panel.PRO) panel = Panel.NONE
           }
-          ShutterButton(camera, countdown > 0, Modifier.bounceEntrance(1)) { shoot() }
+          ShutterButton(camera, countdown > 0, Modifier.entrance(1)) { shoot() }
           GlassIcon(
             Icons.Rounded.Apps,
             contentDescription = "More controls",
             tint = if (panel == Panel.CONTROLS) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             size = 52.dp,
-            modifier = Modifier.bounceEntrance(2)
+            modifier = Modifier.entrance(2)
           ) { panel = if (panel == Panel.CONTROLS) Panel.NONE else Panel.CONTROLS }
         }
         Spacer(Modifier.height(Space.m))
         // The dial of the chosen value takes the place of the modes, under the shutter.
-        if (panel == Panel.PRO) {
+        AnimatedContent(panel == Panel.PRO, transitionSpec = { panelSwap(rise, AppMotion.reduced) }, contentAlignment = Alignment.BottomCenter, label = "dial") { dial ->
+        if (dial) {
           ProPanel(camera, proTab, onClose = closePanel)
         } else {
           Row(
@@ -399,7 +412,7 @@ fun CameraScreen(startMode: CaptureMode?) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
           ) {
-            LastCapture(camera, Modifier.bounceEntrance(3)) {
+            LastCapture(camera, Modifier.entrance(3)) {
               val uri = camera.lastCapture
               val opened = runCatching {
                 if (uri != null) {
@@ -421,9 +434,10 @@ fun CameraScreen(startMode: CaptureMode?) {
               enabled = camera.hasFrontAndBack && !camera.isRecording,
               size = 48.dp,
               tint = MaterialTheme.colorScheme.onSurface,
-              modifier = Modifier.bounceEntrance(4)
+              modifier = Modifier.entrance(4)
             ) { camera.switchLens() }
           }
+        }
         }
       }
     }
@@ -501,7 +515,7 @@ private fun TopBar(camera: TactsCamera, panel: Panel, onPanel: (Panel) -> Unit) 
       }
     }
     Row(
-      Modifier.bounceEntrance(2).floatingSurface(Shapes.pill).padding(horizontal = Space.xxs),
+      Modifier.entrance(2).floatingSurface(Shapes.pill).padding(horizontal = Space.xxs),
       verticalAlignment = Alignment.CenterVertically
     ) {
       if (caps.hasFlash) {
@@ -625,7 +639,7 @@ private fun FocusRing(at: Offset) {
     Box(
       Modifier
         .offset { IntOffset((at.x - half).roundToInt(), (at.y - half).roundToInt()) }
-        .bounceEntrance()
+        .placedMark()
         .size(72.dp)
         .border(1.5.dp, MaterialTheme.colorScheme.primary, Shapes.xs)
     )
@@ -640,7 +654,7 @@ private fun AeReticle(at: Offset, onClear: () -> Unit) {
     Box(
       Modifier
         .offset { IntOffset((at.x - half).roundToInt(), (at.y - half).roundToInt()) }
-        .bounceEntrance()
+        .placedMark()
         .size(56.dp)
         .border(1.5.dp, Color(0xFFFFD60A), CircleShape)
         .clip(CircleShape)
@@ -661,7 +675,7 @@ private fun RecordingPill(camera: TactsCamera) {
   Row(verticalAlignment = Alignment.CenterVertically) {
     Row(
       Modifier
-        .bounceEntrance()
+        .entrance()
         .clip(Shapes.pill)
         .background(colors.error)
         .padding(horizontal = Space.m, vertical = Space.xs),
@@ -692,7 +706,7 @@ private fun AudioMeter(level: Float) {
     db > -12f -> Color(0xFFFFD60A)
     else -> Color(0xFF34C759)
   }
-  Box(Modifier.bounceEntrance(1).size(width = 72.dp, height = 10.dp).floatingSurface(Shapes.pill)) {
+  Box(Modifier.entrance(1).size(width = 72.dp, height = 10.dp).floatingSurface(Shapes.pill)) {
     Box(Modifier.fillMaxHeight().width(72.dp * fill).clip(Shapes.pill).background(color))
   }
 }
@@ -706,7 +720,7 @@ private fun ProgressPill(text: String) {
       color = MaterialTheme.colorScheme.onSurface,
       modifier = Modifier
         .padding(top = Space.xs)
-        .bounceEntrance()
+        .entrance()
         .floatingSurface(Shapes.pill)
         .padding(horizontal = Space.m, vertical = Space.xs)
     )
@@ -731,7 +745,7 @@ private fun ZoomChips(camera: TactsCamera, modifier: Modifier) {
       val text = if (selected) formatFactor(factor) + "×" else stop.label
       Box(
         Modifier
-          .bounceEntrance(i)
+          .entrance(i)
           .size(48.dp)
           .clip(CircleShape)
           .clickable(role = Role.Button) { camera.selectLens(stop) }
@@ -816,8 +830,8 @@ private fun ControlsSheet(camera: TactsCamera, onSettings: () -> Unit, onPanel: 
     Modifier
       .fillMaxWidth()
       .padding(horizontal = Space.s)
-      .bounceEntrance()
-      .floatingSurface(Shapes.l)
+      .entrance()
+      .floatingSurface(Shapes.l, thick = true)
       .padding(vertical = Space.s),
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
@@ -879,7 +893,7 @@ private fun PhotoModes(camera: TactsCamera) {
       val selected = camera.settings.photoMode == m
       Box(
         Modifier
-          .bounceEntrance(i)
+          .entrance(i)
           .height(40.dp)
           .clip(Shapes.pill)
           .then(if (selected) Modifier.background(colors.onSurface.copy(alpha = 0.14f), Shapes.pill) else Modifier)
@@ -950,7 +964,7 @@ private fun LastCapture(camera: TactsCamera, modifier: Modifier, onClick: () -> 
     val thumb = camera.lastThumb
     if (thumb != null) {
       key(thumb) {
-        Image(thumb.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().bounceEntrance())
+        Image(thumb.asImageBitmap(), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().entrance())
       }
     } else if (camera.lastCapture != null && camera.lastIsVideo) {
       Icon(Icons.Rounded.Videocam, contentDescription = null, tint = colors.onSurface)

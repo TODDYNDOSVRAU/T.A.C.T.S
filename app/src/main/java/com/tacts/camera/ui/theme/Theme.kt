@@ -1,6 +1,8 @@
 package com.tacts.camera.ui.theme
 
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
@@ -36,5 +38,8 @@ private val TactsColorScheme = darkColorScheme(
 
 @Composable
 fun TactsTheme(content: @Composable () -> Unit) {
-  MaterialTheme(colorScheme = TactsColorScheme, typography = TactsTypography, content = content)
+  MaterialTheme(colorScheme = TactsColorScheme, typography = TactsTypography) {
+    // Every press in the app answers the same way (Highlight), not with the Material ripple.
+    CompositionLocalProvider(LocalIndication provides Highlight, content = content)
+  }
 }

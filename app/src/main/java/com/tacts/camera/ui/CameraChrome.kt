@@ -103,7 +103,7 @@ internal fun FormatPanel(camera: TactsCamera, visible: Boolean, modifier: Modifi
         .padding(horizontal = Space.m)
         .widthIn(max = 420.dp)
         .fillMaxWidth()
-        .floatingSurface(Shapes.m)
+        .floatingSurface(Shapes.m, thick = true)
         .padding(horizontal = Space.m, vertical = Space.s),
       verticalArrangement = Arrangement.spacedBy(Space.xxs)
     ) {

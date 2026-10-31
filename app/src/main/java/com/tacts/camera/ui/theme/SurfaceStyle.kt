@@ -45,9 +45,13 @@ val liquidGlassSupported: Boolean get() = Build.VERSION.SDK_INT >= 33
 /**
  * A surface floating over the viewfinder (panels, capsules, round buttons), drawn in the chosen
  * [GlassStyle]. Without a blur source it falls back to the app surface, slightly see-through.
+ *
+ * [thick] is for the large surfaces (sheets, panels, cards): a larger surface reads as a thicker
+ * material, so it blurs more, and as a solid surface it is opaque. A see-through solid sheet would
+ * show the picture sharp behind its labels and change tone where it passes off the picture.
  */
 @Composable
-fun Modifier.floatingSurface(shape: Shape = RectangleShape): Modifier {
+fun Modifier.floatingSurface(shape: Shape = RectangleShape, thick: Boolean = false): Modifier {
   val style = LocalGlassStyle.current
   val haze = LocalHazeState.current
   val backdrop = LocalBackdrop.current
@@ -60,22 +64,22 @@ fun Modifier.floatingSurface(shape: Shape = RectangleShape): Modifier {
       effects = {
         vibrancy()
         // Enough blur that the picture never competes with the labels on the glass.
-        blur(8.dp.toPx())
+        blur((if (thick) 16.dp else 8.dp).toPx())
         // Height of the bent rim, how far it bends, depth, and the colour fringe at the edge.
         lens(10.dp.toPx(), 20.dp.toPx(), true, true)
       },
-      onDrawSurface = { drawRect(surface.copy(alpha = 0.36f)) }
+      onDrawSurface = { drawRect(surface.copy(alpha = if (thick) 0.55f else 0.36f)) }
     )
   }
 
   if (style == GlassStyle.SOLID || haze == null) {
-    return this.clip(shape).background(surface.copy(alpha = 0.78f), shape)
+    return this.clip(shape).background(if (thick) TalInkRaised else surface.copy(alpha = 0.78f), shape)
   }
 
   val hazeStyle = HazeStyle(
     backgroundColor = surface,
-    tint = HazeTint(surface.copy(alpha = 0.5f)),
-    blurRadius = 24.dp,
+    tint = HazeTint(surface.copy(alpha = if (thick) 0.62f else 0.5f)),
+    blurRadius = if (thick) 40.dp else 24.dp,
     noiseFactor = 0.05f
   )
   // Only a faint lift at the top: the capsule reads as a surface without a drawn outline.

@@ -46,7 +46,7 @@ import com.tacts.camera.ui.theme.AppText
 import com.tacts.camera.ui.theme.JetBrainsMono
 import com.tacts.camera.ui.theme.Space
 import com.tacts.camera.ui.theme.TactsTheme
-import com.tacts.camera.ui.theme.bounceEntrance
+import com.tacts.camera.ui.theme.entrance
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -104,14 +104,14 @@ private fun PermissionGate(content: @Composable () -> Unit) {
     verticalArrangement = Arrangement.Center,
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
-    Text("T.A.C.T.S.", style = AppText.LargeTitle, color = colors.onBackground, modifier = Modifier.bounceEntrance(0))
+    Text("T.A.C.T.S.", style = AppText.LargeTitle, color = colors.onBackground, modifier = Modifier.entrance(0))
     Spacer(Modifier.height(Space.xs))
     Text(
       "TOTTALLY ACCURATE CAMERA TECHNOLOGY SYSTEM",
       style = AppText.Caption2.copy(fontFamily = JetBrainsMono, letterSpacing = 0.08.em),
       color = colors.onSurfaceVariant,
       textAlign = TextAlign.Center,
-      modifier = Modifier.bounceEntrance(1)
+      modifier = Modifier.entrance(1)
     )
     Spacer(Modifier.height(Space.section))
     Text(
@@ -119,14 +119,14 @@ private fun PermissionGate(content: @Composable () -> Unit) {
       style = AppText.Body,
       color = colors.onSurfaceVariant,
       textAlign = TextAlign.Center,
-      modifier = Modifier.bounceEntrance(2)
+      modifier = Modifier.entrance(2)
     )
     Spacer(Modifier.height(Space.xl))
     PrimaryButton(
       "Allow camera",
       onClick = { launcher.launch(requiredPermissions) },
       icon = Icons.Rounded.PhotoCamera,
-      modifier = Modifier.fillMaxWidth().bounceEntrance(3)
+      modifier = Modifier.fillMaxWidth().entrance(3)
     )
     if (asked) {
       TextAction(
@@ -136,7 +136,7 @@ private fun PermissionGate(content: @Composable () -> Unit) {
             Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
           )
         },
-        modifier = Modifier.bounceEntrance(4)
+        modifier = Modifier.entrance(4)
       )
     }
   }

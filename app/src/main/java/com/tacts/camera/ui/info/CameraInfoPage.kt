@@ -28,7 +28,7 @@ import com.tacts.camera.ui.components.InfoRow
 import com.tacts.camera.ui.components.InsetGroup
 import com.tacts.camera.ui.components.SubPageHeader
 import com.tacts.camera.ui.theme.Space
-import com.tacts.camera.ui.theme.bounceEntrance
+import com.tacts.camera.ui.theme.entrance
 
 /**
  * Everything camera2 reports about each camera on the phone, logical and physical: the summary a
@@ -47,14 +47,14 @@ fun CameraInfoPage(onBack: () -> Unit) {
     item {
       Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = Space.page)) {
         cameras.forEachIndexed { i, (id, label) ->
-          FilterChip(label, selected = id == selected, onClick = { selected = id }, modifier = Modifier.bounceEntrance(i).padding(end = Space.xs))
+          FilterChip(label, selected = id == selected, onClick = { selected = id }, modifier = Modifier.entrance(i).padding(end = Space.xs))
         }
       }
     }
     entries.forEach { (section, rows) ->
       item(key = "$selected-$section") { GroupHeader(section.uppercase()) }
       item(key = "$selected-$section-rows") {
-        InsetGroup(Modifier.bounceEntrance()) {
+        InsetGroup(Modifier.entrance()) {
           rows.forEachIndexed { i, (k, v) ->
             if (i > 0) GroupDivider()
             InfoRow(k, v, mono = section == "All keys")

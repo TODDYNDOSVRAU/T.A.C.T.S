@@ -60,7 +60,7 @@ import com.tacts.camera.ui.theme.AppText
 import com.tacts.camera.ui.theme.JetBrainsMono
 import com.tacts.camera.ui.theme.Shapes
 import com.tacts.camera.ui.theme.Space
-import com.tacts.camera.ui.theme.bounceEntrance
+import com.tacts.camera.ui.theme.entrance
 import com.tacts.camera.ui.theme.floatingSurface
 import com.tacts.camera.ui.theme.glassControl
 import kotlin.math.abs
@@ -132,8 +132,8 @@ fun ProPanel(camera: TactsCamera, tab: ProTab, onClose: () -> Unit, modifier: Mo
     modifier
       .fillMaxWidth()
       .padding(horizontal = Space.s)
-      .bounceEntrance()
-      .floatingSurface(Shapes.l)
+      .entrance()
+      .floatingSurface(Shapes.l, thick = true)
       .padding(horizontal = Space.m, vertical = Space.s)
   ) {
     Box(Modifier.fillMaxWidth().height(40.dp)) {
@@ -213,7 +213,7 @@ fun ProReadoutRow(camera: TactsCamera, selected: ProTab?, onTab: (ProTab) -> Uni
       val isSelected = r.tab == selected
       Column(
         Modifier
-          .bounceEntrance(i)
+          .entrance(i)
           .clip(Shapes.s)
           .then(if (isSelected) Modifier.background(colors.onSurface.copy(alpha = 0.14f), Shapes.s) else Modifier)
           .selectable(selected = isSelected, role = Role.Tab) { onTab(r.tab) }
@@ -291,7 +291,7 @@ private fun RulerDial(
   val tick = colors.onSurface
   val mark = if (manual) colors.primary else colors.onSurface
 
-  Column(Modifier.fillMaxWidth().bounceEntrance(5), horizontalAlignment = Alignment.CenterHorizontally) {
+  Column(Modifier.fillMaxWidth().entrance(5), horizontalAlignment = Alignment.CenterHorizontally) {
     Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
       leading?.let { Box(Modifier.align(Alignment.CenterStart)) { it() } }
       Text(
@@ -359,7 +359,7 @@ private fun FocusDial(camera: TactsCamera) {
       trailing = { FilterChip("AF", selected = s.focusAuto, onClick = { camera.update { it.copy(focusAuto = !it.focusAuto) } }) },
       onIndex = { i -> camera.update { it.copy(focusAuto = false, focusDiopters = i * max / FOCUS_STEPS) } }
     )
-    Row(Modifier.bounceEntrance(6).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.entrance(6).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
       FilterChip(
         "A ${s.focusPullA?.let(::focusLabel) ?: "set"}",
         selected = s.focusPullA != null,
@@ -394,15 +394,15 @@ private fun WbDial(camera: TactsCamera) {
   val caps = camera.caps
   Column {
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(Space.xxs)) {
-      FilterChip("Auto", selected = s.wbMode == WhiteBalanceMode.AUTO && !s.awbLock, onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.AUTO, awbLock = false) } }, modifier = Modifier.bounceEntrance(0))
-      FilterChip("AWB-L", selected = s.wbMode == WhiteBalanceMode.AUTO && s.awbLock, onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.AUTO, awbLock = true) } }, modifier = Modifier.bounceEntrance(1))
-      FilterChip("Kelvin", selected = s.wbMode == WhiteBalanceMode.KELVIN, onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.KELVIN) } }, modifier = Modifier.bounceEntrance(2))
+      FilterChip("Auto", selected = s.wbMode == WhiteBalanceMode.AUTO && !s.awbLock, onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.AUTO, awbLock = false) } }, modifier = Modifier.entrance(0))
+      FilterChip("AWB-L", selected = s.wbMode == WhiteBalanceMode.AUTO && s.awbLock, onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.AUTO, awbLock = true) } }, modifier = Modifier.entrance(1))
+      FilterChip("Kelvin", selected = s.wbMode == WhiteBalanceMode.KELVIN, onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.KELVIN) } }, modifier = Modifier.entrance(2))
       WhiteBalance.entries.filter { it.awbMode in caps.awbModes || caps.hasManualWbGains }.forEachIndexed { i, wb ->
         FilterChip(
           wb.label,
           selected = s.wbMode == WhiteBalanceMode.PRESET && s.whiteBalance == wb,
           onClick = { camera.update { it.copy(wbMode = WhiteBalanceMode.PRESET, whiteBalance = wb, kelvin = wb.kelvin) } },
-          modifier = Modifier.bounceEntrance(i + 3)
+          modifier = Modifier.entrance(i + 3)
         )
       }
     }
@@ -454,7 +454,7 @@ private fun lerp(a: Color, b: Color, t: Float) = Color(
 
 @Composable
 private fun DialRow(label: String, leading: @Composable () -> Unit, slider: @Composable () -> Unit) {
-  Row(Modifier.bounceEntrance(5), verticalAlignment = Alignment.CenterVertically) {
+  Row(Modifier.entrance(5), verticalAlignment = Alignment.CenterVertically) {
     leading()
     Spacer(Modifier.width(Space.s))
     Box(Modifier.weight(1f)) { slider() }
@@ -487,7 +487,7 @@ private fun Unsupported(text: String = "This camera has no manual sensor control
     text,
     style = AppText.Footnote,
     color = MaterialTheme.colorScheme.onSurfaceVariant,
-    modifier = Modifier.bounceEntrance(5).padding(vertical = Space.m, horizontal = Space.xs)
+    modifier = Modifier.entrance(5).padding(vertical = Space.m, horizontal = Space.xs)
   )
 }
 
@@ -499,30 +499,30 @@ fun MonitorPanel(camera: TactsCamera, modifier: Modifier = Modifier) {
     modifier
       .fillMaxWidth()
       .padding(horizontal = Space.s)
-      .bounceEntrance()
-      .floatingSurface(Shapes.l)
+      .entrance()
+      .floatingSurface(Shapes.l, thick = true)
       .padding(Space.s)
   ) {
     Row(Modifier.horizontalScroll(rememberScrollState())) {
-      FilterChip("Peaking", s.peaking, { camera.update { it.copy(peaking = !it.peaking) } }, Modifier.bounceEntrance(0))
-      FilterChip("Zebras ${s.zebraLevel}%", s.zebras, { camera.update { it.copy(zebras = !it.zebras) } }, Modifier.bounceEntrance(1))
-      FilterChip("False colour", s.falseColor, { camera.update { it.copy(falseColor = !it.falseColor) } }, Modifier.bounceEntrance(2))
-      FilterChip("Level", s.level, { camera.update { it.copy(level = !it.level) } }, Modifier.bounceEntrance(3))
-      FilterChip("Centre", s.centerMark, { camera.update { it.copy(centerMark = !it.centerMark) } }, Modifier.bounceEntrance(4))
+      FilterChip("Peaking", s.peaking, { camera.update { it.copy(peaking = !it.peaking) } }, Modifier.entrance(0))
+      FilterChip("Zebras ${s.zebraLevel}%", s.zebras, { camera.update { it.copy(zebras = !it.zebras) } }, Modifier.entrance(1))
+      FilterChip("False colour", s.falseColor, { camera.update { it.copy(falseColor = !it.falseColor) } }, Modifier.entrance(2))
+      FilterChip("Level", s.level, { camera.update { it.copy(level = !it.level) } }, Modifier.entrance(3))
+      FilterChip("Centre", s.centerMark, { camera.update { it.copy(centerMark = !it.centerMark) } }, Modifier.entrance(4))
     }
     Row(Modifier.horizontalScroll(rememberScrollState())) {
       Scope.entries.forEachIndexed { i, sc ->
-        FilterChip(if (sc == Scope.NONE) "No scope" else sc.label, s.scope == sc, { camera.update { it.copy(scope = sc) } }, Modifier.bounceEntrance(i))
+        FilterChip(if (sc == Scope.NONE) "No scope" else sc.label, s.scope == sc, { camera.update { it.copy(scope = sc) } }, Modifier.entrance(i))
       }
     }
     Row(Modifier.horizontalScroll(rememberScrollState())) {
       FrameGuide.entries.forEachIndexed { i, g ->
-        FilterChip(if (g == FrameGuide.NONE) "No guide" else g.label, s.frameGuide == g, { camera.update { it.copy(frameGuide = g) } }, Modifier.bounceEntrance(i))
+        FilterChip(if (g == FrameGuide.NONE) "No guide" else g.label, s.frameGuide == g, { camera.update { it.copy(frameGuide = g) } }, Modifier.entrance(i))
       }
     }
     Row(Modifier.horizontalScroll(rememberScrollState())) {
       GridStyle.entries.forEachIndexed { i, g ->
-        FilterChip(if (g == GridStyle.OFF) "No grid" else g.label, s.grid == g, { camera.update { it.copy(grid = g) } }, Modifier.bounceEntrance(i))
+        FilterChip(if (g == GridStyle.OFF) "No grid" else g.label, s.grid == g, { camera.update { it.copy(grid = g) } }, Modifier.entrance(i))
       }
     }
   }
@@ -537,8 +537,8 @@ fun LookStrip(camera: TactsCamera, modifier: Modifier = Modifier) {
     modifier
       .fillMaxWidth()
       .padding(horizontal = Space.s)
-      .bounceEntrance()
-      .floatingSurface(Shapes.l)
+      .entrance()
+      .floatingSurface(Shapes.l, thick = true)
       .padding(vertical = Space.s)
   ) {
     Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = Space.s), horizontalArrangement = Arrangement.spacedBy(Space.xxs)) {
@@ -547,7 +547,7 @@ fun LookStrip(camera: TactsCamera, modifier: Modifier = Modifier) {
         val filter = look.matrix()?.let { ColorFilter.colorMatrix(ColorMatrix(it.array)) }
         Column(
           Modifier
-            .bounceEntrance(i)
+            .entrance(i)
             .clip(Shapes.m)
             .highlightClickable(role = Role.Tab) { camera.update { it.copy(look = look.name) } }
             .padding(Space.xs),
@@ -574,9 +574,9 @@ fun LookStrip(camera: TactsCamera, modifier: Modifier = Modifier) {
       }
     }
     Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = Space.s)) {
-      FilterChip("No LUT", s.lutName == null, { camera.update { it.copy(lutName = null) } }, Modifier.bounceEntrance(0))
+      FilterChip("No LUT", s.lutName == null, { camera.update { it.copy(lutName = null) } }, Modifier.entrance(0))
       camera.luts.names().forEachIndexed { i, name ->
-        FilterChip(name, s.lutName == name, { camera.update { it.copy(lutName = name) } }, Modifier.bounceEntrance(i + 1))
+        FilterChip(name, s.lutName == name, { camera.update { it.copy(lutName = name) } }, Modifier.entrance(i + 1))
       }
     }
   }

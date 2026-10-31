@@ -110,8 +110,10 @@ hidden or says why.
 **Design**
 - The T.A.R.K.A.S. design system: T.A.L. palette with the ice accent on a pure black page, Space
   Grotesk, Inter and JetBrains Mono, grouped settings lists
-- Controls, panels and readings bounce into place with the T.A.R.K.A.S. "Quicar" animation, and stop
-  when the system's animations are off
+- One motion for the whole app: a spring without overshoot that settles in about 0.3 s. Controls rise
+  into place, panels give their place to each other along one path, a focus or exposure mark appears
+  where the finger touched, and every press answers with the same light wash. Large panels are a
+  thicker glass than the small controls. With the system's animations off, things cross-fade
 
 ## Installation
 

@@ -67,7 +67,7 @@ import com.tacts.camera.ui.components.SwitchRow
 import com.tacts.camera.ui.components.TextAction
 import com.tacts.camera.ui.info.CameraInfoPage
 import com.tacts.camera.ui.theme.Space
-import com.tacts.camera.ui.theme.bounceEntrance
+import com.tacts.camera.ui.theme.entrance
 import kotlin.math.roundToInt
 
 /** One choice page: a list of options with a check mark on the chosen one. */
@@ -120,7 +120,7 @@ private fun ChoicePage(choice: Choice, onBack: () -> Unit) {
   var selected by remember { mutableIntStateOf(choice.selected) }
   Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
     SubPageHeader(choice.title, "Settings", onBack)
-    InsetGroup(Modifier.bounceEntrance()) {
+    InsetGroup(Modifier.entrance()) {
       choice.options.forEachIndexed { i, (label, sub) ->
         if (i > 0) GroupDivider()
         RadioRow(label, selected = i == selected, subtitle = sub, onClick = {
@@ -165,7 +165,7 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
 
     // ---- Photo ----
     GroupHeader("PHOTO")
-    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+    InsetGroup(Modifier.entrance(next(), animate)) {
       Pick("Format", s.photoFormat, PhotoFormat.entries.filter { it in caps.photoFormats }, { it.label }) { v -> set { it.copy(photoFormat = v) } }
       GroupDivider()
       SliderRow("JPEG quality", s.jpegQuality.toFloat(), { v -> set { it.copy(jpegQuality = v.roundToInt()) } }, 70f..100f, "${s.jpegQuality}")
@@ -200,13 +200,13 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
 
     // ---- Presets ----
     GroupHeader("PRESETS")
-    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+    InsetGroup(Modifier.entrance(next(), animate)) {
       ListRow("Presets", value = if (s.presets.isEmpty()) "None" else "${s.presets.size}", icon = Icons.Rounded.Tune, onClick = { open(Page.Presets) })
     }
 
     // ---- Video ----
     GroupHeader("VIDEO")
-    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+    InsetGroup(Modifier.entrance(next(), animate)) {
       Pick("Resolution", s.videoQuality, caps.videoQualities.ifEmpty { VideoQuality.entries }, { it.label }) { v -> set { it.copy(videoQuality = v) } }
       GroupDivider()
       Pick("Frame rate", s.frameRate, caps.frameRates, { "$it fps" }) { v -> set { it.copy(frameRate = v) } }
@@ -253,7 +253,7 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
 
     // ---- Audio ----
     GroupHeader("AUDIO")
-    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+    InsetGroup(Modifier.entrance(next(), animate)) {
       SwitchRow("Record audio", s.audioEnabled, { v -> set { it.copy(audioEnabled = v) } }, icon = Icons.Rounded.Mic)
       GroupDivider()
       Pick("Source", s.audioSource, AudioSource.entries, { it.label }, footer = "Unprocessed skips the phone's noise suppression and gain, for a cleaner signal to mix.") { v ->
@@ -263,7 +263,7 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
 
     // ---- Exposure ----
     GroupHeader("EXPOSURE")
-    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+    InsetGroup(Modifier.entrance(next(), animate)) {
       Pick("Metering", s.metering, Metering.entries, { it.label }) { v -> set { it.copy(metering = v) } }
       GroupDivider()
       Pick("Antibanding", s.antibanding, Antibanding.entries, { it.label }, footer = "Match the mains frequency to stop flicker under artificial light.") { v ->
@@ -293,7 +293,7 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
 
     // ---- Picture ----
     GroupHeader("PICTURE")
-    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+    InsetGroup(Modifier.entrance(next(), animate)) {
       Pick(
         "Gamma",
         s.gamma,
@@ -321,7 +321,7 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
 
     // ---- Monitoring ----
     GroupHeader("MONITORING")
-    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+    InsetGroup(Modifier.entrance(next(), animate)) {
       Pick("Focus peaking colour", s.peakingColor, PeakingColor.entries, { it.label }) { v -> set { it.copy(peakingColor = v) } }
       GroupDivider()
       SliderRow("Peaking sensitivity", (120 - s.peakingThreshold).toFloat(), { v -> set { it.copy(peakingThreshold = 120 - v.roundToInt()) } }, 20f..100f, "${120 - s.peakingThreshold}")
@@ -350,7 +350,7 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
 
     // ---- Interface ----
     GroupHeader("INTERFACE")
-    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+    InsetGroup(Modifier.entrance(next(), animate)) {
       val styles = com.tacts.camera.camera.GlassStyle.entries.filter { it != com.tacts.camera.camera.GlassStyle.LIQUID || com.tacts.camera.ui.theme.liquidGlassSupported }
       Pick("Controls", s.glass, styles, { it.label }, sub = { it.description }) { v -> set { it.copy(glass = v) } }
     }
@@ -358,7 +358,7 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
 
     // ---- Camera ----
     GroupHeader("CAMERA")
-    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+    InsetGroup(Modifier.entrance(next(), animate)) {
       ListRow(
         "Lenses",
         value = s.physicalCameraId?.let { "Lens $it" } ?: "Automatic",
@@ -396,7 +396,7 @@ private fun LutPage(camera: TactsCamera, onBack: () -> Unit) {
     SubPageHeader("LUTs", "Settings", onBack) {
       TextAction("Import .cube", onClick = { picker.launch(arrayOf("*/*")) })
     }
-    InsetGroup(Modifier.bounceEntrance()) {
+    InsetGroup(Modifier.entrance()) {
       RadioRow("None", selected = s.lutName == null, onClick = { camera.update { it.copy(lutName = null) } })
       names.forEachIndexed { i, name ->
         GroupDivider()
@@ -405,7 +405,7 @@ private fun LutPage(camera: TactsCamera, onBack: () -> Unit) {
           selected = s.lutName == name,
           subtitle = if (camera.luts.isBuiltIn(name)) "Built in" else "Imported",
           onClick = { camera.update { it.copy(lutName = name) } },
-          modifier = Modifier.bounceEntrance(i + 1)
+          modifier = Modifier.entrance(i + 1)
         )
       }
     }
@@ -444,7 +444,7 @@ private fun PresetPage(camera: TactsCamera, onBack: () -> Unit) {
     if (s.presets.isEmpty()) {
       GroupFooter("No presets yet. Set exposure, focus, colour and formats the way you want them, then Save current.")
     } else {
-      InsetGroup(Modifier.bounceEntrance()) {
+      InsetGroup(Modifier.entrance()) {
         s.presets.forEachIndexed { i, p ->
           if (i > 0) GroupDivider()
           RadioRow(
@@ -455,7 +455,7 @@ private fun PresetPage(camera: TactsCamera, onBack: () -> Unit) {
               chosen = i
               camera.applyPreset(p)
             },
-            modifier = Modifier.bounceEntrance(i + 1)
+            modifier = Modifier.entrance(i + 1)
           )
         }
       }
@@ -480,7 +480,7 @@ private fun LensPage(camera: TactsCamera, onBack: () -> Unit) {
   val s = camera.settings
   Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
     SubPageHeader("Lenses", "Settings", onBack)
-    InsetGroup(Modifier.bounceEntrance()) {
+    InsetGroup(Modifier.entrance()) {
       RadioRow("Automatic", selected = s.physicalCameraId == null, subtitle = "The phone switches lenses with zoom", onClick = { camera.update { it.copy(physicalCameraId = null) } })
       caps.physicalCameraIds.forEachIndexed { i, id ->
         GroupDivider()
@@ -489,7 +489,7 @@ private fun LensPage(camera: TactsCamera, onBack: () -> Unit) {
           selected = s.physicalCameraId == id,
           subtitle = physicalSummary(LocalContext.current, id),
           onClick = { camera.update { it.copy(physicalCameraId = id) } },
-          modifier = Modifier.bounceEntrance(i + 1)
+          modifier = Modifier.entrance(i + 1)
         )
       }
     }

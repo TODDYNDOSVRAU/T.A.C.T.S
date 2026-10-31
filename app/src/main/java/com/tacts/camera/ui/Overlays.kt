@@ -42,7 +42,7 @@ import com.tacts.camera.ui.theme.AppText
 import com.tacts.camera.ui.theme.JetBrainsMono
 import com.tacts.camera.ui.theme.Shapes
 import com.tacts.camera.ui.theme.Space
-import com.tacts.camera.ui.theme.bounceEntrance
+import com.tacts.camera.ui.theme.entrance
 import com.tacts.camera.ui.theme.floatingSurface
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -182,7 +182,7 @@ fun ScopePanel(scope: Scope, frame: MonitorFrame?, modifier: Modifier = Modifier
     Scope.PARADE -> 192.dp to 72.dp
     else -> 144.dp to 64.dp
   }
-  Box(modifier.bounceEntrance().floatingSurface(Shapes.s).padding(Space.xs)) {
+  Box(modifier.entrance().floatingSurface(Shapes.s).padding(Space.xs)) {
     Box(Modifier.size(w, h)) {
       when (scope) {
         Scope.LUMA -> Histogram(listOf(frame.luma to Color.White.copy(alpha = 0.8f)))

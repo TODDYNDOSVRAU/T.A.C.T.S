@@ -1,11 +1,8 @@
 package com.tacts.camera.ui.components
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -38,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.tacts.camera.ui.theme.AppText
+import com.tacts.camera.ui.theme.Highlight
 import com.tacts.camera.ui.theme.Shapes
 import com.tacts.camera.ui.theme.Size
 import com.tacts.camera.ui.theme.Space
@@ -49,34 +47,21 @@ import com.tacts.camera.ui.theme.Space
 
 // ---- press feedback ----
 
-/**
- * Click with the platform's quiet highlight: the surface darkens slightly while pressed, instead of a
- * ripple or a bounce.
- */
+/** Click with the app's one press feedback ([Highlight]), for rows that draw no surface of their own. */
 fun Modifier.highlightClickable(
   enabled: Boolean = true,
   role: Role = Role.Button,
   onClickLabel: String? = null,
   onClick: () -> Unit
 ): Modifier = composed {
-  val interaction = remember { MutableInteractionSource() }
-  val pressed by interaction.collectIsPressedAsState()
-  val overlay by animateColorAsState(
-    targetValue = if (pressed) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent,
-    // In at once, out gently: the highlight answers the finger immediately.
-    animationSpec = tween(if (pressed) 0 else 220),
-    label = "highlight"
+  this.clickable(
+    interactionSource = remember { MutableInteractionSource() },
+    indication = Highlight,
+    enabled = enabled,
+    role = role,
+    onClickLabel = onClickLabel,
+    onClick = onClick
   )
-  this
-    .clickable(
-      interactionSource = interaction,
-      indication = null,
-      enabled = enabled,
-      role = role,
-      onClickLabel = onClickLabel,
-      onClick = onClick
-    )
-    .background(overlay)
 }
 
 // ---- buttons ----
