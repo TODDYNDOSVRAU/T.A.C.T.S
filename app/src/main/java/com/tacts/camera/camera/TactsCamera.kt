@@ -210,6 +210,16 @@ class TactsCamera(private val context: Context) {
       if (startMode != null) s = s.copy(mode = startMode)
       settings = s
       loaded = true
+      worker.execute {
+        val last = MediaSaver.latest(context)
+        mainExecutor.execute {
+          if (last != null && lastCapture == null) {
+            lastCapture = last.first
+            lastIsVideo = last.second
+            loadThumb(last.first)
+          }
+        }
+      }
       applyLookToPreview()
       val future = ProcessCameraProvider.getInstance(context)
       future.addListener({

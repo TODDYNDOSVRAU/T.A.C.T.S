@@ -1,5 +1,6 @@
 package com.tacts.camera.camera
 
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
@@ -55,6 +56,27 @@ object MediaSaver {
     } catch (e: Exception) {
       resolver.delete(uri, null, null)
       null
+    }
+  }
+
+  /** The newest photo or video this app saved, found again after a restart; null when there is none. */
+  fun latest(context: Context): Pair<Uri, Boolean>? {
+    val folder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) "%/$FOLDER/%" else null
+    fun newest(base: Uri): Pair<Uri, Long>? = try {
+      val columns = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DATE_ADDED)
+      val selection = folder?.let { "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?" }
+      context.contentResolver.query(base, columns, selection, folder?.let { arrayOf(it) }, "${MediaStore.MediaColumns.DATE_ADDED} DESC")?.use {
+        if (it.moveToFirst()) ContentUris.withAppendedId(base, it.getLong(0)) to it.getLong(1) else null
+      }
+    } catch (e: Exception) {
+      null
+    }
+    val photo = newest(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+    val video = newest(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+    return when {
+      photo == null && video == null -> null
+      video == null || (photo != null && photo.second >= video.second) -> photo!!.first to false
+      else -> video.first to true
     }
   }
 

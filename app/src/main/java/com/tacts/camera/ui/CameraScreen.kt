@@ -28,6 +28,9 @@ import android.util.Size
 import android.view.TextureView
 import androidx.camera.view.PreviewView
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -101,6 +104,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -124,6 +128,7 @@ import com.tacts.camera.ui.theme.JetBrainsMono
 import com.tacts.camera.ui.theme.Shapes
 import com.tacts.camera.ui.theme.Space
 import com.tacts.camera.ui.theme.SpaceGrotesk
+import com.tacts.camera.ui.theme.AppMotion
 import com.tacts.camera.ui.theme.bounceEntrance
 import com.tacts.camera.ui.theme.floatingSurface
 import com.tacts.camera.ui.theme.glassContentColor
@@ -220,7 +225,11 @@ fun CameraScreen(startMode: CaptureMode?) {
       // over it.
       val photo = s.mode == CaptureMode.PHOTO
       val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TOP_BAR
-      val frame = if (photo) Modifier.padding(top = top).fillMaxWidth().aspectRatio(3f / 4f) else Modifier.fillMaxSize()
+      // The frame glides between the 3:4 photo frame and the full screen instead of jumping.
+      val spec = if (AppMotion.reduced) snap<Dp>() else tween<Dp>(240, easing = FastOutSlowInEasing)
+      val frameTop by animateDpAsState(if (photo) top else 0.dp, spec, label = "frameTop")
+      val frameHeight by animateDpAsState(if (photo) maxWidth * 4f / 3f else maxHeight, spec, label = "frameHeight")
+      val frame = Modifier.padding(top = frameTop).fillMaxWidth().height(frameHeight)
 
       // The glass blurs a small copy of the picture drawn under the real one (see PreviewMirror). The
       // recorded layer covers the whole screen, because liquid glass places its samples in screen space;
@@ -385,12 +394,19 @@ fun CameraScreen(startMode: CaptureMode?) {
             horizontalArrangement = Arrangement.SpaceBetween
           ) {
             LastCapture(camera, Modifier.bounceEntrance(3)) {
-              camera.lastCapture?.let { uri ->
-                val intent = Intent(Intent.ACTION_VIEW)
-                  .setDataAndType(uri, if (camera.lastIsVideo) "video/*" else "image/*")
-                  .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                runCatching { context.startActivity(intent) }
-              }
+              val uri = camera.lastCapture
+              val opened = runCatching {
+                if (uri != null) {
+                  context.startActivity(
+                    Intent(Intent.ACTION_VIEW)
+                      .setDataAndType(uri, if (camera.lastIsVideo) "video/*" else "image/*")
+                      .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                  )
+                } else {
+                  context.startActivity(Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_GALLERY))
+                }
+              }.isSuccess
+              if (!opened) camera.notice = "Nenhum aplicativo de galeria abriu. Instale ou ative uma galeria e tente de novo."
             }
             ModeSwitch(camera, Modifier.weight(1f).padding(horizontal = Space.s))
             GlassIcon(
@@ -521,7 +537,6 @@ private fun FormatPill(text: String, index: Int, onClick: () -> Unit) {
   Box(
     Modifier
       .height(48.dp)
-      .bounceEntrance(index)
       .clip(Shapes.pill)
       .clickable(role = Role.Button, onClickLabel = "Change", onClick = onClick),
     contentAlignment = Alignment.Center
@@ -960,8 +975,8 @@ private fun LastCapture(camera: TactsCamera, modifier: Modifier, onClick: () -> 
       .clip(CircleShape)
       .background(colors.surfaceContainer)
       .border(1.5.dp, colors.onSurface.copy(alpha = 0.6f), CircleShape)
-      .clickable(enabled = camera.lastCapture != null, role = Role.Button, onClick = onClick)
-      .semantics { contentDescription = "Open last capture" },
+      .clickable(role = Role.Button, onClick = onClick)
+      .semantics { contentDescription = "Open gallery" },
     contentAlignment = Alignment.Center
   ) {
     val thumb = camera.lastThumb
