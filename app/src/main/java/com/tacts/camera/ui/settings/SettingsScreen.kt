@@ -168,6 +168,8 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
       GroupDivider()
       SliderRow("JPEG quality", s.jpegQuality.toFloat(), { v -> set { it.copy(jpegQuality = v.roundToInt()) } }, 70f..100f, "${s.jpegQuality}")
       GroupDivider()
+      SwitchRow("Zero shutter lag", s.zeroShutterLag, { v -> set { it.copy(zeroShutterLag = v) } }, subtitle = "Saves the frame at the press. Off waits for a fresh frame at full processing; flash and RAW always wait.")
+      GroupDivider()
       Pick("Self-timer", s.timerSeconds, listOf(0, 2, 3, 5, 10), { if (it == 0) "Off" else "$it s" }) { v -> set { it.copy(timerSeconds = v) } }
       GroupDivider()
       StepperRow("Burst shots", s.burstCount, { v -> set { it.copy(burstCount = v) } }, 2..50)

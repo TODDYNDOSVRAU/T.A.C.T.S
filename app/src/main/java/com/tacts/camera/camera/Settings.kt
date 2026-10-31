@@ -207,6 +207,8 @@ data class CameraSettings(
   val focusBracketShots: Int = 5,
   val nightFrames: Int = 8,
   val jpegQuality: Int = 95,
+  /** Save the frame at the press from a buffer, where the camera supports it; off waits for a fresh, fully processed frame. */
+  val zeroShutterLag: Boolean = true,
 
   // Video
   val videoQuality: VideoQuality = VideoQuality.FHD,

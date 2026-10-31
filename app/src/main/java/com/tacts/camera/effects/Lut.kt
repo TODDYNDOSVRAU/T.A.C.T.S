@@ -23,42 +23,68 @@ class Lut(val name: String, val size: Int, val data: FloatArray) {
     val r0 = fr.toInt().coerceIn(0, n)
     val g0 = fg.toInt().coerceIn(0, n)
     val b0 = fb.toInt().coerceIn(0, n)
-    val r1 = minOf(r0 + 1, n)
-    val g1 = minOf(g0 + 1, n)
-    val b1 = minOf(b0 + 1, n)
     val dr = fr - r0
     val dg = fg - g0
     val db = fb - b0
+    // Offsets of the eight corners, in floats; a step along red is 3, along green 3·size, along blue 3·size².
+    val sr = if (r0 < n) 3 else 0
+    val sg = if (g0 < n) 3 * size else 0
+    val sb = if (b0 < n) 3 * size * size else 0
+    val i000 = ((b0 * size + g0) * size + r0) * 3
+    val d = data
     for (c in 0 until 3) {
-      fun at(ri: Int, gi: Int, bi: Int) = data[((bi * size + gi) * size + ri) * 3 + c]
-      val c00 = at(r0, g0, b0) * (1 - dr) + at(r1, g0, b0) * dr
-      val c10 = at(r0, g1, b0) * (1 - dr) + at(r1, g1, b0) * dr
-      val c01 = at(r0, g0, b1) * (1 - dr) + at(r1, g0, b1) * dr
-      val c11 = at(r0, g1, b1) * (1 - dr) + at(r1, g1, b1) * dr
-      out[c] = (c00 * (1 - dg) + c10 * dg) * (1 - db) + (c01 * (1 - dg) + c11 * dg) * db
+      val i = i000 + c
+      val c00 = d[i] + (d[i + sr] - d[i]) * dr
+      val c10 = d[i + sg] + (d[i + sg + sr] - d[i + sg]) * dr
+      val c01 = d[i + sb] + (d[i + sb + sr] - d[i + sb]) * dr
+      val c11 = d[i + sb + sg] + (d[i + sb + sg + sr] - d[i + sb + sg]) * dr
+      val c0 = c00 + (c10 - c00) * dg
+      val c1 = c01 + (c11 - c01) * dg
+      out[c] = c0 + (c1 - c0) * db
     }
   }
 
-  /** The photo through this LUT, on the CPU (the GPU effect only covers preview and video). */
+  /**
+   * The photo through this LUT, on the CPU (the GPU effect only covers preview and video). Bands of
+   * rows run on every core at once; each band reads and writes 64 rows at a time.
+   */
   fun applyTo(source: Bitmap): Bitmap {
     val w = source.width
     val h = source.height
     val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    val row = IntArray(w)
-    val rgb = FloatArray(3)
-    for (y in 0 until h) {
-      source.getPixels(row, 0, w, 0, y, w, 1)
-      for (x in 0 until w) {
-        val p = row[x]
-        map(((p shr 16) and 0xFF) / 255f, ((p shr 8) and 0xFF) / 255f, (p and 0xFF) / 255f, rgb)
-        row[x] = (0xFF shl 24) or (to8(rgb[0]) shl 16) or (to8(rgb[1]) shl 8) or to8(rgb[2])
-      }
-      out.setPixels(row, 0, w, 0, y, w, 1)
+    val threads = Runtime.getRuntime().availableProcessors().coerceIn(1, 8)
+    val band = (h + threads - 1) / threads
+    val pool = java.util.concurrent.Executors.newFixedThreadPool(threads)
+    try {
+      (0 until threads).map { t ->
+        pool.submit {
+          val rgb = FloatArray(3)
+          val rows = 64
+          val buf = IntArray(w * rows)
+          var y = t * band
+          val end = minOf(h, y + band)
+          while (y < end) {
+            val n = minOf(rows, end - y)
+            source.getPixels(buf, 0, w, 0, y, w, n)
+            for (k in 0 until w * n) {
+              val p = buf[k]
+              map(((p shr 16) and 0xFF) * INV_255, ((p shr 8) and 0xFF) * INV_255, (p and 0xFF) * INV_255, rgb)
+              buf[k] = (0xFF shl 24) or (to8(rgb[0]) shl 16) or (to8(rgb[1]) shl 8) or to8(rgb[2])
+            }
+            synchronized(out) { out.setPixels(buf, 0, w, 0, y, w, n) }
+            y += n
+          }
+        }
+      }.forEach { it.get() }
+    } finally {
+      pool.shutdown()
     }
     return out
   }
 
   private fun to8(v: Float) = (v * 255f + 0.5f).toInt().coerceIn(0, 255)
+
+  private val INV_255 = 1f / 255f
 
   companion object {
     /** Reads an Adobe/Resolve .cube file (3D only). */

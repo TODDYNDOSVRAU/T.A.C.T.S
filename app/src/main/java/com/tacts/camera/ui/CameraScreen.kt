@@ -143,8 +143,7 @@ fun CameraScreen(startMode: CaptureMode?) {
   val camera = remember { TactsCamera(context) }
   val previewView = remember {
     PreviewView(context).apply {
-      // TextureView, so the look's layer paint tints the preview.
-      implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+      // SurfaceView or TextureView is chosen at each bind (TactsCamera.rebind).
       scaleType = PreviewView.ScaleType.FILL_CENTER
     }
   }
@@ -234,7 +233,7 @@ fun CameraScreen(startMode: CaptureMode?) {
             .then(if (liquidOn) Modifier.layerBackdrop(backdrop) else Modifier)
         ) {
           PreviewMirror(
-            source = { if (s.mode == CaptureMode.RAW_VIDEO) rawTexture.value else previewView.getChildAt(0) as? TextureView },
+            source = { if (s.mode == CaptureMode.RAW_VIDEO) rawTexture.value else previewView.getChildAt(0) },
             modifier = Modifier.fillMaxSize()
           )
         }
@@ -590,14 +589,16 @@ private fun TimecodePill(camera: TactsCamera) {
       val c = Calendar.getInstance()
       val frames = c.get(Calendar.MILLISECOND) * s.frameRate / 1000
       timecode = "%02d:%02d:%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), c.get(Calendar.SECOND), frames)
-      delay(1000L / s.frameRate.coerceAtLeast(1))
+      // Ten times a second: the frame count is exact when drawn, without a redraw on every frame.
+      delay(100)
     }
   }
   Text(
     timecode,
     style = AppText.Caption1.copy(fontFamily = JetBrainsMono),
     color = MaterialTheme.colorScheme.onSurface,
-    modifier = Modifier.floatingSurface(Shapes.pill).padding(horizontal = Space.m, vertical = Space.xxs)
+    // Its own layer: ten updates a second redraw this pill, not the whole screen.
+    modifier = Modifier.graphicsLayer().floatingSurface(Shapes.pill).padding(horizontal = Space.m, vertical = Space.xxs)
   )
 }
 
@@ -653,7 +654,7 @@ private fun RecordingPill(camera: TactsCamera) {
       Box(Modifier.size(8.dp).clip(CircleShape).background(colors.onError))
       Spacer(Modifier.width(Space.s))
       Text(
-        seconds?.let { "%02d:%02d".format(it / 60, it % 60) } ?: "REC ${camera.rawStats.written}",
+        seconds?.let { "%02d:%02d".format(it / 60, it % 60) } ?: "REC ${camera.rawStats.written} · ${camera.rawStats.dropped} drop",
         style = AppText.Subhead.copy(fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium),
         color = colors.onError
       )

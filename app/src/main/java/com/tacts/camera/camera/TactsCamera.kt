@@ -96,6 +96,8 @@ class TactsCamera(private val context: Context) {
     private set
   var live by mutableStateOf(LiveReadout())
     private set
+  /** The latest colour readout when only it changed; kept out of Compose state (see readoutCallback). */
+  private var colour: LiveReadout? = null
   var monitor by mutableStateOf<MonitorFrame?>(null)
     private set
   var hasFrontAndBack by mutableStateOf(false)
@@ -305,11 +307,11 @@ class TactsCamera(private val context: Context) {
 
   private fun needsRebind(a: CameraSettings, b: CameraSettings): Boolean =
     a.mode != b.mode || a.lensFacing != b.lensFacing || a.physicalCameraId != b.physicalCameraId || a.cameraId != b.cameraId ||
-      a.photoFormat != b.photoFormat || a.jpegQuality != b.jpegQuality ||
+      a.photoFormat != b.photoFormat || a.jpegQuality != b.jpegQuality || a.zeroShutterLag != b.zeroShutterLag ||
       a.videoQuality != b.videoQuality || a.frameRate != b.frameRate || a.bitrate != b.bitrate ||
       a.dynamicRange != b.dynamicRange || a.stabilization != b.stabilization || a.slowMoFps != b.slowMoFps ||
       a.audioSource != b.audioSource || effectWanted(a) != effectWanted(b) ||
-      (a.scope != b.scope && (a.scope == Scope.NONE || b.scope == Scope.NONE)) ||
+      (a.scope != b.scope && (a.scope == Scope.NONE || b.scope == Scope.NONE)) || tintsPreview(a) != tintsPreview(b) ||
       ((a.peaking || a.zebras || a.falseColor) != (b.peaking || b.zebras || b.falseColor))
 
   private fun save() {
@@ -338,6 +340,13 @@ class TactsCamera(private val context: Context) {
     processor.setLut(luts.load(s.lutName))
     return LutEffect(processor, targets)
   }
+
+  /**
+   * Whether the preview needs the look's layer paint: a look the GPU effect does not already draw.
+   * Only a TextureView takes a layer paint; otherwise the preview is a SurfaceView, which the system
+   * composes directly without a redraw of the app for every camera frame.
+   */
+  private fun tintsPreview(s: CameraSettings) = s.look != Look.NATURAL.name && !effectWanted(s)
 
   private fun monitoringWanted(s: CameraSettings) = s.scope != Scope.NONE || s.peaking || s.zebras || s.falseColor
 
@@ -402,6 +411,7 @@ class TactsCamera(private val context: Context) {
     val interop = Camera2Interop.Extender(previewBuilder)
     s.physicalCameraId?.takeIf { it in caps.physicalCameraIds }?.let { interop.setPhysicalCameraId(it) }
     interop.setSessionCaptureCallback(readoutCallback)
+    view.implementationMode = if (tintsPreview(s)) PreviewView.ImplementationMode.COMPATIBLE else PreviewView.ImplementationMode.PERFORMANCE
     val preview = previewBuilder.build().also { it.setSurfaceProvider(view.surfaceProvider) }
 
     camera = try {
@@ -454,6 +464,12 @@ class TactsCamera(private val context: Context) {
     applyMetering()
   }
 
+  private fun zslSupported(provider: ProcessCameraProvider, selector: CameraSelector): Boolean = try {
+    provider.getCameraInfo(selector).isZslSupported
+  } catch (e: Exception) {
+    false
+  }
+
   private fun bindPhoto(
     provider: ProcessCameraProvider,
     owner: LifecycleOwner,
@@ -470,7 +486,12 @@ class TactsCamera(private val context: Context) {
     }
     val captureBuilder = ImageCapture.Builder()
       .setResolutionSelector(aspect)
-      .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+      .setCaptureMode(
+        // Zero shutter lag keeps a ring of full-resolution frames and saves the one at the press.
+        // CameraX turns it off by itself with flash, RAW or an effect bound.
+        if (s.zeroShutterLag && zslSupported(provider, selector)) ImageCapture.CAPTURE_MODE_ZERO_SHUTTER_LAG
+        else ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY
+      )
       .setFlashMode(flashModeFor(s.flash))
       .setJpegQuality(s.jpegQuality)
       .setOutputFormat(format)
@@ -591,7 +612,13 @@ class TactsCamera(private val context: Context) {
       if (readout.activeLens != live.activeLens) android.util.Log.i("TACTS", "active lens ${readout.activeLens} at zoom $zoomRatio")
       mainExecutor.execute {
         // Kelvin mode keeps the colour transform auto had chosen; do not overwrite it with its own.
-        live = if (settings.wbMode == WhiteBalanceMode.AUTO) readout else readout.copy(ccTransform = live.ccTransform ?: readout.ccTransform, ccGains = live.ccGains)
+        val next = if (settings.wbMode == WhiteBalanceMode.AUTO) readout else readout.copy(ccTransform = live.ccTransform ?: readout.ccTransform, ccGains = live.ccGains)
+        // The colour transform and gains change on every frame in auto and only feed Kelvin mode; the
+        // screen shows the other values, so the UI recomposes only when one of those changes.
+        if (next.copy(ccTransform = null, ccGains = null, faces = emptyList()) != live.copy(ccTransform = null, ccGains = null, faces = emptyList())) {
+          live = next
+          colour = null
+        } else colour = next
       }
     }
   }
@@ -620,7 +647,7 @@ class TactsCamera(private val context: Context) {
 
   private fun applyRequest() {
     val cam = camera ?: return
-    Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(RequestOptions.build(settings, caps, live, videoFps()))
+    Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(RequestOptions.build(settings, caps, colour?.let { live.copy(ccTransform = it.ccTransform, ccGains = it.ccGains) } ?: live, videoFps()))
     if (settings.exposureAuto && caps.evRange.last > caps.evRange.first) {
       cam.cameraControl.setExposureCompensationIndex(settings.evIndex.coerceIn(caps.evRange))
     }
@@ -927,6 +954,16 @@ class TactsCamera(private val context: Context) {
     val s = settings
     val name = MediaSaver.newName()
     val wantsProcessing = s.look != Look.NATURAL.name || s.lutName != null
+    val started = SystemClock.elapsedRealtime()
+    try {
+      captureOnce(capture, s, name, wantsProcessing)
+    } finally {
+      // Engineering readout: shutter press to file saved, for the log.
+      android.util.Log.i("TACTS", "photo ${s.photoFormat} ${if (wantsProcessing) "processed " else ""}saved in ${SystemClock.elapsedRealtime() - started} ms")
+    }
+  }
+
+  private suspend fun captureOnce(capture: ImageCapture, s: CameraSettings, name: String, wantsProcessing: Boolean) {
     when {
       capture.outputFormat == ImageCapture.OUTPUT_FORMAT_RAW_JPEG -> saveFiles(capture, name, raw = true, jpeg = true)
       capture.outputFormat == ImageCapture.OUTPUT_FORMAT_RAW -> saveFiles(capture, name, raw = true, jpeg = false)

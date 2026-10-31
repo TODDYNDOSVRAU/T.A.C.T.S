@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -206,7 +207,8 @@ private fun evLabel(index: Int, step: Float): String {
 @Composable
 fun ProReadoutRow(camera: TactsCamera, selected: ProTab?, onTab: (ProTab) -> Unit, modifier: Modifier = Modifier) {
   val colors = MaterialTheme.colorScheme
-  Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+  // Its own layer: the live values change several times a second without redrawing the screen.
+  Row(modifier.fillMaxWidth().graphicsLayer(), horizontalArrangement = Arrangement.SpaceEvenly) {
     proReadings(camera).forEachIndexed { i, r ->
       val isSelected = r.tab == selected
       Column(
