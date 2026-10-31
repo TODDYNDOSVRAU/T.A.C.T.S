@@ -1,6 +1,10 @@
 package com.tacts.camera.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -115,7 +119,7 @@ val ProTab.title: String
 
 /**
  * The manual controls as a glass sheet: the selected value's dial under a title, with a close button.
- * The values themselves are on the readout row at the top of the screen, which picks the tab.
+ * The values themselves are on the readout row above the shutter, which picks the tab.
  */
 @Composable
 fun ProPanel(camera: TactsCamera, tab: ProTab, onClose: () -> Unit, modifier: Modifier = Modifier) {
@@ -152,6 +156,7 @@ fun ProPanel(camera: TactsCamera, tab: ProTab, onClose: () -> Unit, modifier: Mo
       ProTab.ISO -> if (caps.isoValues.isEmpty()) Unsupported() else StepDial(
         auto = s.exposureAuto,
         autoLabel = "A",
+        autoValue = "ISO ${camera.live.iso ?: "–"}",
         count = caps.isoValues.size,
         index = nearestIndex(caps.isoValues, s.iso) { a, b -> abs(a - b).toDouble() },
         label = { "ISO ${caps.isoValues[it]}" },
@@ -163,6 +168,7 @@ fun ProPanel(camera: TactsCamera, tab: ProTab, onClose: () -> Unit, modifier: Mo
         angle -> StepDial(
           auto = s.exposureAuto,
           autoLabel = "A",
+          autoValue = camera.live.shutterNs?.let(::shutterLabel) ?: "–",
           count = SHUTTER_ANGLES.size,
           index = SHUTTER_ANGLES.indexOf(s.shutterAngle).coerceAtLeast(0),
           label = { "${angleLabel(SHUTTER_ANGLES[it])} · ${shutterLabel(s.copy(shutterAngle = SHUTTER_ANGLES[it]).angleExposureNs())}" },
@@ -172,6 +178,7 @@ fun ProPanel(camera: TactsCamera, tab: ProTab, onClose: () -> Unit, modifier: Mo
         else -> StepDial(
           auto = s.exposureAuto,
           autoLabel = "A",
+          autoValue = camera.live.shutterNs?.let(::shutterLabel) ?: "–",
           count = caps.shutterValues.size,
           index = nearestIndex(caps.shutterValues, s.shutterNs) { a, b -> abs(ln(a.toDouble() / b)) },
           label = { shutterLabel(caps.shutterValues[it]) },
@@ -185,13 +192,15 @@ fun ProPanel(camera: TactsCamera, tab: ProTab, onClose: () -> Unit, modifier: Mo
   }
 }
 
+private const val FOCUS_STEPS = 100
+
 private fun evLabel(index: Int, step: Float): String {
   val ev = index * step
   return if (abs(ev) < 0.01f) "±0" else (if (ev > 0) "+" else "−") + "%.1f".format(abs(ev))
 }
 
 /**
- * The readout row at the top of the screen: each value over its name, in the accent when set by hand.
+ * The readout row above the shutter: each value over its name, in the accent when set by hand.
  * Tapping one opens its dial; the open one sits on a quiet fill.
  */
 @Composable
@@ -227,38 +236,109 @@ private fun EvDial(camera: TactsCamera) {
   val caps = camera.caps
   if (caps.evRange.first == caps.evRange.last) return Unsupported("This camera has no exposure compensation")
   if (!s.exposureAuto) return Unsupported("Exposure compensation works with auto ISO and shutter")
-  DialRow(label = "EV ${evLabel(s.evIndex, caps.evStep)}", leading = {
-    FilterChip("AE-L", selected = s.aeLock, onClick = { camera.update { it.copy(aeLock = !it.aeLock) } })
-  }) {
-    val span = caps.evRange.last - caps.evRange.first
-    Slider(
-      value = s.evIndex.toFloat(),
-      onValueChange = { v -> camera.update { it.copy(evIndex = v.roundToInt()) } },
-      valueRange = caps.evRange.first.toFloat()..caps.evRange.last.toFloat(),
-      steps = (span - 1).coerceAtLeast(0),
-      colors = sliderColors(s.evIndex != 0)
-    )
-  }
+  RulerDial(
+    count = caps.evRange.last - caps.evRange.first + 1,
+    index = s.evIndex - caps.evRange.first,
+    manual = s.evIndex != 0,
+    value = evLabel(s.evIndex, caps.evStep),
+    trailing = { FilterChip("AE-L", selected = s.aeLock, onClick = { camera.update { it.copy(aeLock = !it.aeLock) } }) },
+    onIndex = { i -> camera.update { it.copy(evIndex = caps.evRange.first + i) } }
+  )
 }
 
 @Composable
 private fun StepDial(
   auto: Boolean,
   autoLabel: String,
+  autoValue: String,
   count: Int,
   index: Int,
   label: (Int) -> String,
   onAuto: () -> Unit,
   onIndex: (Int) -> Unit
 ) {
-  DialRow(label = if (auto) "AUTO" else label(index), leading = { FilterChip(autoLabel, selected = auto, onClick = onAuto) }) {
-    Slider(
-      value = index.toFloat(),
-      onValueChange = { v -> onIndex(v.roundToInt().coerceIn(0, count - 1)) },
-      valueRange = 0f..(count - 1).coerceAtLeast(1).toFloat(),
-      steps = (count - 2).coerceAtLeast(0),
-      colors = sliderColors(!auto)
-    )
+  RulerDial(
+    count = count,
+    index = index,
+    manual = !auto,
+    value = if (auto) autoValue else label(index),
+    trailing = { FilterChip(autoLabel, selected = auto, onClick = onAuto) },
+    onIndex = onIndex
+  )
+}
+
+/**
+ * The iOS manual dial: the value large in the middle, and a ruler of ticks under it that slides under a
+ * fixed mark as you drag, one tick per step, with a light tick of feedback at each step.
+ */
+@Composable
+private fun RulerDial(
+  count: Int,
+  index: Int,
+  manual: Boolean,
+  value: String,
+  leading: (@Composable () -> Unit)? = null,
+  trailing: (@Composable () -> Unit)? = null,
+  onIndex: (Int) -> Unit
+) {
+  val colors = MaterialTheme.colorScheme
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+  val current by androidx.compose.runtime.rememberUpdatedState(index)
+  var drag by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+  val spacing = with(androidx.compose.ui.platform.LocalDensity.current) { 11.dp.toPx() }
+  val tick = colors.onSurface
+  val mark = if (manual) colors.primary else colors.onSurface
+
+  Column(Modifier.fillMaxWidth().bounceEntrance(5), horizontalAlignment = Alignment.CenterHorizontally) {
+    Box(Modifier.fillMaxWidth().height(48.dp), contentAlignment = Alignment.Center) {
+      leading?.let { Box(Modifier.align(Alignment.CenterStart)) { it() } }
+      Text(
+        value,
+        style = AppText.Title2.copy(fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium),
+        color = if (manual) colors.primary else colors.onSurface,
+        maxLines = 1
+      )
+      trailing?.let { Box(Modifier.align(Alignment.CenterEnd)) { it() } }
+    }
+    Canvas(
+      Modifier
+        .fillMaxWidth()
+        .height(40.dp)
+        .pointerInput(count) {
+          detectHorizontalDragGestures(onDragEnd = { drag = 0f }, onDragCancel = { drag = 0f }) { change, dx ->
+            change.consume()
+            drag += dx
+            // Dragging left moves the ruler left: later values come under the mark.
+            val steps = (-drag / spacing).toInt()
+            if (steps != 0) {
+              val next = (current + steps).coerceIn(0, count - 1)
+              if (next != current) {
+                onIndex(next)
+                haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+              }
+              drag += steps * spacing
+            }
+          }
+        }
+    ) {
+      val cx = size.width / 2f
+      val reach = (size.width / 2f / spacing).toInt() + 1
+      for (k in -reach..reach) {
+        val i = index + k
+        if (i < 0 || i >= count) continue
+        val x = cx + k * spacing + drag
+        val fade = (1f - kotlin.math.abs(x - cx) / cx).coerceIn(0f, 1f)
+        val major = i % 5 == 0
+        val h = if (major) size.height * 0.55f else size.height * 0.3f
+        drawLine(
+          tick.copy(alpha = 0.15f + 0.6f * fade),
+          Offset(x, (size.height - h) / 2f),
+          Offset(x, (size.height + h) / 2f),
+          strokeWidth = if (major) 2.dp.toPx() else 1.dp.toPx()
+        )
+      }
+      drawLine(mark, Offset(cx, 0f), Offset(cx, size.height), strokeWidth = 2.5.dp.toPx())
+    }
   }
 }
 
@@ -268,17 +348,15 @@ private fun FocusDial(camera: TactsCamera) {
   val s = camera.settings
   val max = camera.caps.minFocusDiopters
   Column {
-    DialRow(label = if (s.focusAuto) "AUTO" else focusLabel(s.focusDiopters), leading = {
-      FilterChip("AF", selected = s.focusAuto, onClick = { camera.update { it.copy(focusAuto = !it.focusAuto) } })
-    }) {
-      // Left is infinity, right is the closest the lens can focus.
-      Slider(
-        value = s.focusDiopters.coerceIn(0f, max),
-        onValueChange = { v -> camera.update { it.copy(focusAuto = false, focusDiopters = v) } },
-        valueRange = 0f..max,
-        colors = sliderColors(!s.focusAuto)
-      )
-    }
+    // Left is infinity, right is the closest the lens can focus, in 100 steps.
+    RulerDial(
+      count = FOCUS_STEPS + 1,
+      index = (s.focusDiopters.coerceIn(0f, max) / max * FOCUS_STEPS).roundToInt(),
+      manual = !s.focusAuto,
+      value = if (s.focusAuto) camera.live.focusDiopters?.let(::focusLabel) ?: "AF" else focusLabel(s.focusDiopters),
+      trailing = { FilterChip("AF", selected = s.focusAuto, onClick = { camera.update { it.copy(focusAuto = !it.focusAuto) } }) },
+      onIndex = { i -> camera.update { it.copy(focusAuto = false, focusDiopters = i * max / FOCUS_STEPS) } }
+    )
     Row(Modifier.bounceEntrance(6).horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically) {
       FilterChip(
         "A ${s.focusPullA?.let(::focusLabel) ?: "set"}",
@@ -327,14 +405,15 @@ private fun WbDial(camera: TactsCamera) {
       }
     }
     if (s.wbMode == WhiteBalanceMode.KELVIN) {
-      DialRow(label = "${s.kelvin} K", leading = { KelvinSwatch(s.kelvin) }) {
-        Slider(
-          value = s.kelvin.toFloat(),
-          onValueChange = { v -> camera.update { it.copy(kelvin = (v / 50f).roundToInt() * 50) } },
-          valueRange = 2000f..10000f,
-          colors = sliderColors(true)
-        )
-      }
+      // 2000 to 10000 K in 50 K steps.
+      RulerDial(
+        count = 161,
+        index = ((s.kelvin - 2000) / 50).coerceIn(0, 160),
+        manual = true,
+        value = "${s.kelvin} K",
+        leading = { KelvinSwatch(s.kelvin) },
+        onIndex = { i -> camera.update { it.copy(kelvin = 2000 + i * 50) } }
+      )
       DialRow(label = "Tint ${if (s.tint > 0) "+" else ""}${s.tint}", leading = { Spacer(Modifier.width(34.dp)) }) {
         Slider(
           value = s.tint.toFloat(),

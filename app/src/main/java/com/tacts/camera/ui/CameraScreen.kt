@@ -155,6 +155,8 @@ fun CameraScreen(startMode: CaptureMode?) {
 
   var panel by remember { mutableStateOf(Panel.NONE) }
   var proTab by remember { mutableStateOf(ProTab.ISO) }
+  // The ƒ button: shows the manual values over the shutter, as the iOS camera does.
+  var proRow by remember { mutableStateOf(false) }
   var settingsOpen by remember { mutableStateOf(false) }
   var countdown by remember { mutableIntStateOf(0) }
   var focusPoint by remember { mutableStateOf<Offset?>(null) }
@@ -218,7 +220,7 @@ fun CameraScreen(startMode: CaptureMode?) {
       // Photo keeps its 3:4 frame under the top bar; video fills the whole screen and the controls float
       // over it.
       val photo = s.mode == CaptureMode.PHOTO
-      val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TOP_BAR + READOUT
+      val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + TOP_BAR
       val frame = if (photo) Modifier.padding(top = top).fillMaxWidth().aspectRatio(3f / 4f) else Modifier.fillMaxSize()
 
       // The glass blurs a small copy of the picture drawn under the real one (see PreviewMirror). The
@@ -275,21 +277,9 @@ fun CameraScreen(startMode: CaptureMode?) {
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = blink.value)))
       }
 
-      // ---- top: format, lights and looks; the readout row under them ----
+      // ---- top: format, lights and looks ----
       Column(Modifier.fillMaxWidth().statusBarsPadding()) {
         TopBar(camera, panel, onPanel = { panel = if (panel == it) Panel.NONE else it })
-        ProReadoutRow(
-          camera,
-          selected = proTab.takeIf { panel == Panel.PRO },
-          onTab = { t ->
-            if (panel == Panel.PRO && proTab == t) panel = Panel.NONE
-            else {
-              proTab = t
-              panel = Panel.PRO
-            }
-          },
-          modifier = Modifier.height(READOUT).padding(horizontal = Space.xs)
-        )
         Column(Modifier.fillMaxWidth().padding(top = Space.s), horizontalAlignment = Alignment.CenterHorizontally) {
           if (camera.isRecording) RecordingPill(camera) else TimecodePill(camera)
           camera.progress?.let { ProgressPill(it) }
@@ -329,7 +319,6 @@ fun CameraScreen(startMode: CaptureMode?) {
         horizontalAlignment = Alignment.CenterHorizontally
       ) {
         when (panel) {
-          Panel.PRO -> ProPanel(camera, proTab, onClose = closePanel)
           Panel.LOOKS -> LookStrip(camera)
           Panel.MONITOR -> MonitorPanel(camera)
           Panel.CONTROLS -> ControlsSheet(
@@ -341,25 +330,42 @@ fun CameraScreen(startMode: CaptureMode?) {
             onPanel = { panel = it },
             onExposure = {
               proTab = ProTab.EV
+              proRow = true
               panel = Panel.PRO
             }
           )
           // A lens locked in Settings ignores the capsule's lens changes, so it is not offered then.
-          Panel.NONE -> if (s.mode != CaptureMode.RAW_VIDEO && s.physicalCameraId == null) ZoomChips(camera, Modifier)
+          else -> if (s.mode != CaptureMode.RAW_VIDEO && s.physicalCameraId == null) ZoomChips(camera, Modifier)
         }
-        Spacer(Modifier.height(Space.m))
+        if (proRow) {
+          ProReadoutRow(
+            camera,
+            selected = proTab.takeIf { panel == Panel.PRO },
+            onTab = { t ->
+              if (panel == Panel.PRO && proTab == t) panel = Panel.NONE
+              else {
+                proTab = t
+                panel = Panel.PRO
+              }
+            },
+            modifier = Modifier.padding(horizontal = Space.xs, vertical = Space.xxs)
+          )
+        }
+        Spacer(Modifier.height(Space.s))
         Row(
           Modifier.fillMaxWidth().padding(horizontal = Space.xxl),
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.SpaceBetween
         ) {
-          GlassIcon(
-            Icons.Rounded.Tune,
+          GlassText(
+            "ƒ",
             contentDescription = "Manual controls",
-            tint = if (panel == Panel.PRO || !s.isAllAuto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-            size = 52.dp,
+            tint = if (proRow || !s.isAllAuto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.bounceEntrance(0)
-          ) { panel = if (panel == Panel.PRO) Panel.NONE else Panel.PRO }
+          ) {
+            proRow = !proRow
+            if (!proRow && panel == Panel.PRO) panel = Panel.NONE
+          }
           ShutterButton(camera, countdown > 0, Modifier.bounceEntrance(1)) { shoot() }
           GlassIcon(
             Icons.Rounded.Apps,
@@ -370,28 +376,33 @@ fun CameraScreen(startMode: CaptureMode?) {
           ) { panel = if (panel == Panel.CONTROLS) Panel.NONE else Panel.CONTROLS }
         }
         Spacer(Modifier.height(Space.m))
-        Row(
-          Modifier.fillMaxWidth().padding(horizontal = Space.l),
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-          LastCapture(camera, Modifier.bounceEntrance(3)) {
-            camera.lastCapture?.let { uri ->
-              val intent = Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, if (camera.lastIsVideo) "video/*" else "image/*")
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-              runCatching { context.startActivity(intent) }
+        // The dial of the chosen value takes the place of the modes, under the shutter.
+        if (panel == Panel.PRO) {
+          ProPanel(camera, proTab, onClose = closePanel)
+        } else {
+          Row(
+            Modifier.fillMaxWidth().padding(horizontal = Space.l),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+          ) {
+            LastCapture(camera, Modifier.bounceEntrance(3)) {
+              camera.lastCapture?.let { uri ->
+                val intent = Intent(Intent.ACTION_VIEW)
+                  .setDataAndType(uri, if (camera.lastIsVideo) "video/*" else "image/*")
+                  .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                runCatching { context.startActivity(intent) }
+              }
             }
+            ModeSwitch(camera, Modifier.weight(1f).padding(horizontal = Space.s))
+            GlassIcon(
+              Icons.Rounded.Cameraswitch,
+              contentDescription = "Switch camera",
+              enabled = camera.hasFrontAndBack && !camera.isRecording,
+              size = 48.dp,
+              tint = MaterialTheme.colorScheme.onSurface,
+              modifier = Modifier.bounceEntrance(4)
+            ) { camera.switchLens() }
           }
-          ModeSwitch(camera, Modifier.weight(1f).padding(horizontal = Space.s))
-          GlassIcon(
-            Icons.Rounded.Cameraswitch,
-            contentDescription = "Switch camera",
-            enabled = camera.hasFrontAndBack && !camera.isRecording,
-            size = 48.dp,
-            tint = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.bounceEntrance(4)
-          ) { camera.switchLens() }
         }
       }
     }
@@ -399,7 +410,6 @@ fun CameraScreen(startMode: CaptureMode?) {
 }
 
 private val TOP_BAR = 52.dp
-private val READOUT = 44.dp
 
 /**
  * False when the system asks for no blur, read the way T.A.R.K.A.S. reads it: Samsung's "Reduce
@@ -547,6 +557,23 @@ private fun GlassIcon(
   ) {
     Box(Modifier.size(size).floatingSurface(CircleShape), contentAlignment = Alignment.Center) {
       Icon(icon, contentDescription = null, tint = if (enabled) tint else tint.copy(alpha = 0.38f), modifier = Modifier.size(22.dp))
+    }
+  }
+}
+
+/** A round glass button with a glyph instead of an icon (the ƒ of the manual controls). */
+@Composable
+private fun GlassText(text: String, contentDescription: String, tint: Color, modifier: Modifier = Modifier, onClick: () -> Unit) {
+  Box(
+    modifier
+      .size(52.dp)
+      .clip(CircleShape)
+      .clickable(role = Role.Button, onClick = onClick)
+      .semantics { this.contentDescription = contentDescription },
+    contentAlignment = Alignment.Center
+  ) {
+    Box(Modifier.size(52.dp).floatingSurface(CircleShape), contentAlignment = Alignment.Center) {
+      Text(text, style = AppText.Title2.copy(fontFamily = SpaceGrotesk, fontWeight = FontWeight.Medium), color = tint)
     }
   }
 }
