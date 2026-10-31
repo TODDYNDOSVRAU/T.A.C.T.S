@@ -340,6 +340,12 @@ class TactsCamera(private val context: Context) {
     }
     monitorConfig = MonitorConfig.from(s, s.lensFacing == CameraSelector.LENS_FACING_FRONT)
 
+    // A mode saved from another camera or lens may not exist on this one.
+    if (s.mode == CaptureMode.SLOW_MO && caps.highSpeedFps.isEmpty()) {
+      update { it.copy(mode = CaptureMode.VIDEO) }
+      return
+    }
+
     if (s.mode == CaptureMode.RAW_VIDEO) {
       // The RAW engine owns the camera; the UI shows its own TextureView and calls attachRawPreview.
       openRaw()
@@ -353,7 +359,8 @@ class TactsCamera(private val context: Context) {
       )
       .build()
 
-    val previewBuilder = Preview.Builder().setResolutionSelector(aspect)
+    // High-speed sessions choose the preview size themselves and reject a resolution selector.
+    val previewBuilder = Preview.Builder().apply { if (s.mode != CaptureMode.SLOW_MO) setResolutionSelector(aspect) }
     if (s.stabilization == Stabilization.PREVIEW && caps.previewStabilization) previewBuilder.setPreviewStabilizationEnabled(true)
     val interop = Camera2Interop.Extender(previewBuilder)
     s.physicalCameraId?.takeIf { it in caps.physicalCameraIds }?.let { interop.setPhysicalCameraId(it) }
@@ -365,8 +372,13 @@ class TactsCamera(private val context: Context) {
         CaptureMode.PHOTO -> bindPhoto(provider, owner, selector, preview, aspect, s)
         CaptureMode.VIDEO -> bindVideo(provider, owner, selector, preview, aspect, s)
         CaptureMode.SLOW_MO -> {
+          // High-speed sessions only take the qualities the camera lists for them, not the normal ones.
+          val quality = Recorder.getHighSpeedVideoCapabilities(provider.getCameraInfo(selector))
+            ?.getSupportedQualities(DynamicRange.SDR)
+            ?.firstOrNull()
+            ?: throw IllegalStateException("no high-speed quality")
           val recorder = Recorder.Builder()
-            .setQualitySelector(QualitySelector.from(Quality.HD, FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)))
+            .setQualitySelector(QualitySelector.from(quality))
             .build()
           val capture = VideoCapture.withOutput(recorder)
           videoCapture = capture
@@ -376,12 +388,13 @@ class TactsCamera(private val context: Context) {
             .setFrameRateRange(Range(fps, fps))
             .setSlowMotionEnabled(true)
             .build()
-          boundVideo = "HD ${fps}p slow motion"
+          boundVideo = "${quality.toString().removePrefix("QUALITY_")} ${fps}p slow motion"
           provider.bindToLifecycle(owner, selector, config)
         }
         CaptureMode.RAW_VIDEO -> null
       }
     } catch (e: Exception) {
+      android.util.Log.w("TACTS", "bind failed in ${s.mode}", e)
       notice = when (s.mode) {
         CaptureMode.SLOW_MO -> "Slow motion is not available on this camera"
         else -> "Camera unavailable: ${e.message}"

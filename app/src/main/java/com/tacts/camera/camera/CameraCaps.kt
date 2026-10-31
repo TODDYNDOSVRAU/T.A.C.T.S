@@ -11,6 +11,7 @@ import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.CameraInfo
 import androidx.camera.core.DynamicRange
 import androidx.camera.core.ImageCapture
+import androidx.camera.video.ExperimentalHighSpeedVideo
 import androidx.camera.video.Quality
 import androidx.camera.video.Recorder
 
@@ -153,8 +154,13 @@ data class CameraCaps(
       // a variable range (the encoder then holds it).
       val frameRates = FRAME_RATES.filter { it in fixedRates || it <= maxRate }
 
+      // Slow motion runs through CameraX, which needs a high-speed profile for the camera on top of the
+      // Camera2 stream configuration; some phones list the latter only.
       val highSpeed = try {
-        streamMap?.highSpeedVideoFpsRanges?.map { it.upper }?.filter { it >= 120 }?.distinct()?.sorted() ?: emptyList()
+        @OptIn(ExperimentalHighSpeedVideo::class)
+        val cameraXQualities = Recorder.getHighSpeedVideoCapabilities(info)?.getSupportedQualities(DynamicRange.SDR).orEmpty()
+        if (cameraXQualities.isEmpty()) emptyList()
+        else streamMap?.highSpeedVideoFpsRanges?.map { it.upper }?.filter { it >= 120 }?.distinct()?.sorted() ?: emptyList()
       } catch (e: Exception) {
         emptyList()
       }

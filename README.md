@@ -109,7 +109,7 @@ What the app can do depends on the phone's camera (Settings > Camera info shows 
   with RAW video.
 - Log profiles are curves on the phone's image processor, not a manufacturer's log.
 - LUTs and looks are burnt into 8-bit video only, not into 10-bit HDR or slow motion.
-- Slow motion records without sound, as the platform's high-speed mode does.
+- Slow motion needs a high-speed profile that CameraX can read for the camera; some phones (the Galaxy S23 among them) list 120 fps in Camera2 only, and then the mode is hidden. It records without sound, as the platform's high-speed mode does.
 
 ## Roadmap
 
