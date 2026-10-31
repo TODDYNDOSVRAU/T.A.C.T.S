@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,6 +22,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -92,13 +94,17 @@ private sealed interface Page {
 @Composable
 fun SettingsScreen(camera: TactsCamera, onClose: () -> Unit) {
   var page by remember { mutableStateOf<Page>(Page.Root) }
+  // Held here, not in the list, so coming back from a page lands on the same row.
+  val rootScroll = rememberScrollState()
+  var rootShown by remember { mutableStateOf(false) }
+  LaunchedEffect(Unit) { rootShown = true }
   BackHandler { if (page == Page.Root) onClose() else page = Page.Root }
 
   androidx.compose.foundation.layout.Box(
     Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).statusBarsPadding().navigationBarsPadding()
   ) {
     when (val p = page) {
-      Page.Root -> Root(camera, onClose, open = { page = it })
+      Page.Root -> Root(camera, rootScroll, !rootShown, onClose, open = { page = it })
       is Page.Pick -> ChoicePage(p.choice) { page = Page.Root }
       Page.Luts -> LutPage(camera) { page = Page.Root }
       Page.Lenses -> LensPage(camera) { page = Page.Root }
@@ -127,7 +133,7 @@ private fun ChoicePage(choice: Choice, onBack: () -> Unit) {
 }
 
 @Composable
-private fun Root(camera: TactsCamera, onClose: () -> Unit, open: (Page) -> Unit) {
+private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onClose: () -> Unit, open: (Page) -> Unit) {
   val s = camera.settings
   val caps = camera.caps
   fun set(t: (CameraSettings) -> CameraSettings) = camera.update(t)
@@ -152,12 +158,12 @@ private fun Root(camera: TactsCamera, onClose: () -> Unit, open: (Page) -> Unit)
   var index = 0
   fun next() = index++
 
-  Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+  Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
     SubPageHeader("Settings", "Camera", onClose)
 
     // ---- Photo ----
     GroupHeader("PHOTO")
-    InsetGroup(Modifier.bounceEntrance(next())) {
+    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
       Pick("Format", s.photoFormat, PhotoFormat.entries.filter { it in caps.photoFormats }, { it.label }) { v -> set { it.copy(photoFormat = v) } }
       GroupDivider()
       SliderRow("JPEG quality", s.jpegQuality.toFloat(), { v -> set { it.copy(jpegQuality = v.roundToInt()) } }, 70f..100f, "${s.jpegQuality}")
@@ -182,7 +188,7 @@ private fun Root(camera: TactsCamera, onClose: () -> Unit, open: (Page) -> Unit)
 
     // ---- Video ----
     GroupHeader("VIDEO")
-    InsetGroup(Modifier.bounceEntrance(next())) {
+    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
       Pick("Resolution", s.videoQuality, caps.videoQualities.ifEmpty { VideoQuality.entries }, { it.label }) { v -> set { it.copy(videoQuality = v) } }
       GroupDivider()
       Pick("Frame rate", s.frameRate, caps.frameRates, { "$it fps" }) { v -> set { it.copy(frameRate = v) } }
@@ -229,7 +235,7 @@ private fun Root(camera: TactsCamera, onClose: () -> Unit, open: (Page) -> Unit)
 
     // ---- Audio ----
     GroupHeader("AUDIO")
-    InsetGroup(Modifier.bounceEntrance(next())) {
+    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
       SwitchRow("Record audio", s.audioEnabled, { v -> set { it.copy(audioEnabled = v) } }, icon = Icons.Rounded.Mic)
       GroupDivider()
       Pick("Source", s.audioSource, AudioSource.entries, { it.label }, footer = "Unprocessed skips the phone's noise suppression and gain, for a cleaner signal to mix.") { v ->
@@ -239,7 +245,7 @@ private fun Root(camera: TactsCamera, onClose: () -> Unit, open: (Page) -> Unit)
 
     // ---- Exposure ----
     GroupHeader("EXPOSURE")
-    InsetGroup(Modifier.bounceEntrance(next())) {
+    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
       Pick("Metering", s.metering, Metering.entries, { it.label }) { v -> set { it.copy(metering = v) } }
       GroupDivider()
       Pick("Antibanding", s.antibanding, Antibanding.entries, { it.label }, footer = "Match the mains frequency to stop flicker under artificial light.") { v ->
@@ -269,7 +275,7 @@ private fun Root(camera: TactsCamera, onClose: () -> Unit, open: (Page) -> Unit)
 
     // ---- Picture ----
     GroupHeader("PICTURE")
-    InsetGroup(Modifier.bounceEntrance(next())) {
+    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
       Pick(
         "Gamma",
         s.gamma,
@@ -297,7 +303,7 @@ private fun Root(camera: TactsCamera, onClose: () -> Unit, open: (Page) -> Unit)
 
     // ---- Monitoring ----
     GroupHeader("MONITORING")
-    InsetGroup(Modifier.bounceEntrance(next())) {
+    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
       Pick("Focus peaking colour", s.peakingColor, PeakingColor.entries, { it.label }) { v -> set { it.copy(peakingColor = v) } }
       GroupDivider()
       SliderRow("Peaking sensitivity", (120 - s.peakingThreshold).toFloat(), { v -> set { it.copy(peakingThreshold = 120 - v.roundToInt()) } }, 20f..100f, "${120 - s.peakingThreshold}")
@@ -326,7 +332,7 @@ private fun Root(camera: TactsCamera, onClose: () -> Unit, open: (Page) -> Unit)
 
     // ---- Camera ----
     GroupHeader("CAMERA")
-    InsetGroup(Modifier.bounceEntrance(next())) {
+    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
       ListRow(
         "Lenses",
         value = s.physicalCameraId?.let { "Lens $it" } ?: "Automatic",

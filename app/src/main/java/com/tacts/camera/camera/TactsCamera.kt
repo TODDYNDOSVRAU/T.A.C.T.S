@@ -161,6 +161,11 @@ class TactsCamera(private val context: Context) {
   private val raw = RawVideoEngine(context).apply {
     onStats = { s -> mainExecutor.execute { rawStats = s; isRecording = s.recording } }
     onError = { msg -> mainExecutor.execute { notice = msg } }
+    onFinished = { path, frames, dropped ->
+      mainExecutor.execute {
+        notice = "$frames DNG frames in $path" + if (dropped > 0) ", $dropped dropped" else ""
+      }
+    }
   }
   private var rawTexture: SurfaceTexture? = null
   private var rawTextureSize: Size? = null
@@ -985,7 +990,6 @@ class TactsCamera(private val context: Context) {
   private fun toggleRaw() {
     if (rawStats.recording) {
       raw.stop()
-      notice = "${rawStats.written} DNG frames in DCIM/TACTS/${rawStats.folder}"
       update { it.copy(clipCounter = it.clipCounter + 1) }
     } else {
       raw.start(settings.clipName() + "_RAW")

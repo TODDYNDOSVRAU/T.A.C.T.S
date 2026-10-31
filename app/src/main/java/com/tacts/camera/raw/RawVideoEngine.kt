@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.util.Range
 import android.util.Size
@@ -25,6 +26,7 @@ import android.view.Surface
 import com.tacts.camera.camera.CameraCaps
 import com.tacts.camera.camera.CameraSettings
 import com.tacts.camera.camera.RequestOptions
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
@@ -33,8 +35,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * RAW video in the MotionCam way: the sensor's own data, frame after frame, each frame a DNG file in
- * a folder per clip (a CinemaDNG-style sequence that Resolve and other graders open as a clip).
+ * RAW video in the MotionCam way: the sensor's own data, frame after frame, each frame a DNG. The
+ * frames of a clip go into one ZIP file (Documents/TACTS/<clip>.zip), written as they arrive, so the
+ * clip is a single file to move and unpack into a DNG sequence for Resolve and other graders.
  *
  * CameraX has no RAW stream for video, so this engine runs the camera on its own with camera2: one
  * session with the preview surface and a RAW_SENSOR ImageReader. Frames are written on a worker
@@ -43,10 +46,12 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class RawVideoEngine(private val context: Context) {
 
-  data class Stats(val recording: Boolean = false, val written: Int = 0, val dropped: Int = 0, val folder: String? = null)
+  data class Stats(val recording: Boolean = false, val written: Int = 0, val dropped: Int = 0, val file: String? = null)
 
   var onStats: (Stats) -> Unit = {}
   var onError: (String) -> Unit = {}
+  /** Called once the ZIP is closed: the path shown to the user, and the frames it holds. */
+  var onFinished: (path: String, frames: Int, dropped: Int) -> Unit = { _, _, _ -> }
 
   private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
   private val thread = HandlerThread("tacts-raw").apply { start() }
@@ -69,7 +74,11 @@ class RawVideoEngine(private val context: Context) {
   /** RAW images that arrived before their capture result, by timestamp. Touched on the camera thread only. */
   private val waiting = HashMap<Long, Image>()
   private val dropped = AtomicInteger(0)
-  private var fallbackDir: File? = null
+
+  /** The clip's ZIP and where it lives. Touched on the writer thread only. */
+  private var sink: ZipSink? = null
+  @Volatile private var sinkPath: String? = null
+  private var sinkDiscard: (() -> Unit)? = null
 
   /** Opens [cameraId] and shows its preview on [texture]. */
   @SuppressLint("MissingPermission")
@@ -156,8 +165,15 @@ class RawVideoEngine(private val context: Context) {
     written.set(0)
     frame.set(0)
     dropped.set(0)
-    fallbackDir = null
     recording = true
+    writer.execute {
+      val opened = openZip(clipName)
+      if (opened == null) {
+        recording = false
+        onError("Could not create the RAW file. Check the free space and try again.")
+      }
+      report()
+    }
     report()
   }
 
@@ -167,6 +183,8 @@ class RawVideoEngine(private val context: Context) {
       waiting.values.forEach { it.close() }
       waiting.clear()
     }
+    // Queued after the frames still waiting to be written, so the ZIP closes with all of them in.
+    writer.execute { finishZip() }
     report()
   }
 
@@ -208,20 +226,27 @@ class RawVideoEngine(private val context: Context) {
   }
 
   private fun write(image: Image, result: TotalCaptureResult, chars: CameraCharacteristics, clipName: String, index: Int) {
-    val output = openOutput(clipName, "%s_%06d.dng".format(clipName, index))
+    val zip = sink
     try {
-      output?.stream?.use { out ->
-        DngCreator(chars, result).use { dng ->
-          // The sensor is mounted sideways; the tag tells editors how to stand the frame up (portrait).
-          dng.setOrientation(orientationTag(chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0))
-          dng.writeImage(out, image)
-        }
+      if (zip == null) {
+        dropped.incrementAndGet()
+        return
       }
-      if (output != null) written.incrementAndGet() else dropped.incrementAndGet()
+      val out = zip.startEntry("%s_%06d.dng".format(clipName, index))
+      DngCreator(chars, result).use { dng ->
+        // The sensor is mounted sideways; the tag tells editors how to stand the frame up (portrait).
+        dng.setOrientation(orientationTag(chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0))
+        dng.writeImage(out, image)
+      }
+      zip.finishEntry()
+      written.incrementAndGet()
     } catch (e: Exception) {
+      // A half-written entry cannot be taken back: close the ZIP with the frames before it and stop.
       android.util.Log.w("TactsRaw", "DNG write failed", e)
-      output?.discard?.invoke()
       dropped.incrementAndGet()
+      recording = false
+      onError("Could not write the RAW file: ${e.message ?: "storage error"}")
+      finishZip()
     } finally {
       image.close()
       pending.decrementAndGet()
@@ -229,29 +254,59 @@ class RawVideoEngine(private val context: Context) {
     }
   }
 
-  private class Output(val stream: OutputStream, val discard: () -> Unit)
-
-  /** DCIM/TACTS/<clip>/<frame>.dng: one folder per clip, visible to file managers and graders. */
-  private fun openOutput(clipName: String, file: String): Output? {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      val values = ContentValues().apply {
-        put(MediaStore.MediaColumns.DISPLAY_NAME, file)
-        put(MediaStore.MediaColumns.MIME_TYPE, "image/x-adobe-dng")
-        put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DCIM}/TACTS/$clipName")
+  /** Documents/TACTS/<clip>.zip: one file per clip, visible to file managers. */
+  private fun openZip(clipName: String): ZipSink? {
+    val file = "$clipName.zip"
+    try {
+      val out: OutputStream
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val values = ContentValues().apply {
+          put(MediaStore.MediaColumns.DISPLAY_NAME, file)
+          put(MediaStore.MediaColumns.MIME_TYPE, "application/zip")
+          put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOCUMENTS}/TACTS")
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(MediaStore.Files.getContentUri("external"), values) ?: return null
+        val descriptor = resolver.openFileDescriptor(uri, "w")
+        if (descriptor == null) {
+          resolver.delete(uri, null, null)
+          return null
+        }
+        out = ParcelFileDescriptor.AutoCloseOutputStream(descriptor)
+        sinkDiscard = { resolver.delete(uri, null, null) }
+      } else {
+        @Suppress("DEPRECATION")
+        val dir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "TACTS").apply { mkdirs() }
+        val target = File(dir, file)
+        out = FileOutputStream(target)
+        sinkDiscard = { target.delete() }
       }
-      val resolver = context.contentResolver
-      val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: return null
-      val stream = resolver.openOutputStream(uri) ?: return null
-      return Output(stream) { resolver.delete(uri, null, null) }
+      sinkPath = "${Environment.DIRECTORY_DOCUMENTS}/TACTS/$file"
+      return ZipSink(BufferedOutputStream(out, WRITE_BUFFER)).also { sink = it }
+    } catch (e: Exception) {
+      android.util.Log.w("TactsRaw", "Could not open the ZIP", e)
+      return null
     }
-    @Suppress("DEPRECATION")
-    val dir = fallbackDir ?: File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "TACTS/$clipName")
-      .apply { mkdirs() }.also { fallbackDir = it }
-    val target = File(dir, file)
-    return Output(FileOutputStream(target)) { target.delete() }
   }
 
-  private fun report() = onStats(Stats(recording, written.get(), dropped.get(), clip))
+  /** Closes the clip's ZIP: the directory is written, and an empty clip is removed. */
+  private fun finishZip() {
+    val zip = sink ?: return
+    sink = null
+    val path = sinkPath.orEmpty()
+    val discard = sinkDiscard
+    sinkDiscard = null
+    val frames = written.get()
+    try {
+      zip.close()
+      if (frames == 0) discard?.invoke() else onFinished(path, frames, dropped.get())
+    } catch (e: Exception) {
+      android.util.Log.w("TactsRaw", "Could not close the ZIP", e)
+      onError("Could not finish the RAW file: ${e.message ?: "storage error"}")
+    }
+  }
+
+  private fun report() = onStats(Stats(recording, written.get(), dropped.get(), sinkPath))
 
   fun close() {
     recording = false
@@ -278,7 +333,10 @@ class RawVideoEngine(private val context: Context) {
 
   companion object {
     /** Frames waiting to be written before new ones are dropped. */
-    private const val MAX_IN_FLIGHT = 4
+    private const val MAX_IN_FLIGHT = 8
+
+    /** Bytes gathered before each write to storage; large writes reach the card faster. */
+    private const val WRITE_BUFFER = 4 * 1024 * 1024
   }
 }
 

@@ -55,8 +55,8 @@ hidden or says why.
 - Time-of-day **timecode** in the status line
 
 **RAW video**
-- The sensor's own data, frame by frame, as a **DNG sequence** in `DCIM/TACTS/<clip>/` that
-  DaVinci Resolve and other graders open as a clip
+- The sensor's own data, frame by frame, as DNG files inside **one ZIP** in `Documents/TACTS/<clip>.zip`
+  (Zip64, so clips can pass 4 GB); extract it and DaVinci Resolve and other graders open the DNGs as a clip
 - Runs its own Camera2 session; frames written and dropped are shown live
 
 **Monitoring**
@@ -105,7 +105,8 @@ What the app can do depends on the phone's camera (Settings > Camera info shows 
   `MANUAL_POST_PROCESSING`, otherwise the nearest preset is used; **gamma profiles** need tonemap
   curve support. Most mid- and high-end phones have them; LEGACY and many LIMITED cameras do not.
 - **RAW video** needs the `RAW` capability. Frames are written as uncompressed DNG, so the frame rate
-  that reaches storage depends on the phone; dropped frames are counted on screen. No sound is recorded
+  that reaches storage depends on the phone (on a Galaxy S23, about 10 of 181 frames were dropped in
+  6 s); dropped frames are counted on screen and in the final notice. No sound is recorded
   with RAW video.
 - Log profiles are curves on the phone's image processor, not a manufacturer's log.
 - LUTs and looks are burnt into 8-bit video only, not into 10-bit HDR or slow motion.

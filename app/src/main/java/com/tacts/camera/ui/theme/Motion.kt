@@ -54,10 +54,11 @@ object AppMotion {
  * [Motion.StaggerItems] items of a group come one after another by [index].
  */
 @Composable
-fun Modifier.bounceEntrance(index: Int = 0): Modifier {
+fun Modifier.bounceEntrance(index: Int = 0, enabled: Boolean = true): Modifier {
   if (AppMotion.reduced) return this
-  val progress = remember { Animatable(0f) }
+  val progress = remember { Animatable(if (enabled) 0f else 1f) }
   LaunchedEffect(Unit) {
+    if (!enabled) return@LaunchedEffect
     if (index in 1 until Motion.StaggerItems) delay(index * Motion.StaggerStepMs)
     progress.animateTo(1f, spring(dampingRatio = Motion.BounceDamping, stiffness = Motion.BounceStiffness))
   }

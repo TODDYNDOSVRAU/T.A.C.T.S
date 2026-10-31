@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
@@ -64,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -186,11 +188,11 @@ fun CameraScreen(startMode: CaptureMode?) {
       InfoStrip(camera)
 
       BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-        val ratio = if (s.mode == CaptureMode.PHOTO) 3f / 4f else 9f / 16f
+        // Photo keeps its 3:4 frame; video fills the whole area edge to edge and crops what does not fit.
+        val photo = s.mode == CaptureMode.PHOTO
         Box(
-          Modifier
-            .aspectRatio(ratio, matchHeightConstraintsFirst = maxWidth / maxHeight > ratio)
-            .clip(Shapes.xs)
+          (if (photo) Modifier.aspectRatio(3f / 4f, matchHeightConstraintsFirst = maxWidth / maxHeight > 3f / 4f).clip(Shapes.xs)
+          else Modifier.fillMaxSize())
             .background(Color.Black)
         ) {
           // Anamorphic desqueeze: the picture is shown wider than recorded, letterboxed in the frame.
@@ -312,8 +314,12 @@ fun CameraScreen(startMode: CaptureMode?) {
 /** The RAW engine draws into a TextureView of its own; CameraX's PreviewView is not used then. */
 @Composable
 private fun RawPreview(camera: TactsCamera) {
-  AndroidView(
-    factory = { ctx ->
+  // The picture is 9:16 and covers the frame like the CameraX preview does, instead of being stretched.
+  BoxWithConstraints(Modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
+    val scale = maxOf(maxWidth / 9f, maxHeight / 16f)
+    AndroidView(
+      modifier = Modifier.requiredSize(scale * 9f, scale * 16f),
+      factory = { ctx ->
       TextureView(ctx).apply {
         surfaceTextureListener = object : TextureView.SurfaceTextureListener {
           override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) =
@@ -328,9 +334,9 @@ private fun RawPreview(camera: TactsCamera) {
           override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
         }
       }
-    },
-    modifier = Modifier.fillMaxSize()
-  )
+      }
+    )
+  }
 }
 
 @Composable
