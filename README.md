@@ -92,8 +92,11 @@ hidden or says why.
   (0.6, 1, 3 on a Galaxy S23; a 5× or 10× tele adds its own button). The figures come from each
   lens's focal length and sensor size, so they are right on any phone; a lens listed as a camera of
   its own, outside the main camera's zoom range, is opened directly
-- Controls laid out after the iOS 27 camera: format and frame rate on the left, lights and looks in a
-  capsule on the right; lenses over the frame; the ƒ button shows the manual values (EV, ISO,
+- Controls laid out after the iOS 26 camera: format and frame rate on the left, and a tap on them opens a
+  card with every format, resolution and frame rate the camera offers; lights and looks in a capsule on the
+  right; lenses over the frame, and holding a lens or sliding across them turns a **zoom wheel** (log scale,
+  a tick felt at each lens); the mode bar shows photo and video, and holding it, sliding across it or
+  tapping + shows every mode; the ƒ button shows the manual values (EV, ISO,
   shutter, focus, white balance) above the shutter, and tapping one opens its dial under the shutter:
   the value large, a ruler of ticks to drag, A for auto; a sheet with every other control; gallery,
   modes and camera switch at the bottom

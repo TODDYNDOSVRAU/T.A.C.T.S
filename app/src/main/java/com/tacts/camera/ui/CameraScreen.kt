@@ -138,7 +138,7 @@ import kotlinx.coroutines.launch
 import java.util.Calendar
 import kotlin.math.roundToInt
 
-private enum class Panel { NONE, PRO, LOOKS, MONITOR, CONTROLS }
+private enum class Panel { NONE, PRO, LOOKS, MONITOR, CONTROLS, FORMAT }
 
 @Composable
 fun CameraScreen(startMode: CaptureMode?) {
@@ -262,6 +262,11 @@ fun CameraScreen(startMode: CaptureMode?) {
             .pointerInput(Unit) {
               detectTapGestures(
                 onTap = { p ->
+                  // A tap on the picture first closes the format card, as a tap outside a popover does.
+                  if (panel == Panel.FORMAT) {
+                    panel = Panel.NONE
+                    return@detectTapGestures
+                  }
                   camera.focusAt(p.x, p.y)
                   focusPoint = p
                   focusTick++
@@ -288,6 +293,7 @@ fun CameraScreen(startMode: CaptureMode?) {
       // ---- top: format, lights and looks ----
       Column(Modifier.fillMaxWidth().statusBarsPadding()) {
         TopBar(camera, panel, onPanel = { panel = if (panel == it) Panel.NONE else it })
+        FormatPanel(camera, visible = panel == Panel.FORMAT)
         Column(Modifier.fillMaxWidth().padding(top = Space.s), horizontalAlignment = Alignment.CenterHorizontally) {
           if (camera.isRecording) RecordingPill(camera) else TimecodePill(camera)
           camera.progress?.let { ProgressPill(it) }
@@ -343,7 +349,7 @@ fun CameraScreen(startMode: CaptureMode?) {
             }
           )
           // A lens locked in Settings ignores the capsule's lens changes, so it is not offered then.
-          else -> if (s.mode != CaptureMode.RAW_VIDEO && s.physicalCameraId == null) ZoomChips(camera, Modifier)
+          else -> if (s.mode != CaptureMode.RAW_VIDEO && s.physicalCameraId == null) ZoomControl(camera) { ZoomChips(camera, it) }
         }
         if (proRow) {
           ProReadoutRow(
@@ -478,24 +484,19 @@ private fun TopBar(camera: TactsCamera, panel: Panel, onPanel: (Panel) -> Unit) 
     verticalAlignment = Alignment.CenterVertically
   ) {
     Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(Space.xs)) {
+      // The pills name the format; a tap opens the card with every choice (FormatPanel).
+      val open = panel == Panel.FORMAT
+      val openFormat = { onPanel(Panel.FORMAT) }
       when (s.mode) {
-        CaptureMode.PHOTO -> {
-          val formats = PhotoFormat.entries.filter { it in caps.photoFormats }
-          FormatPill(s.photoFormat.shortLabel, 0) {
-            if (formats.size > 1) camera.update { it.copy(photoFormat = formats[(formats.indexOf(it.photoFormat) + 1) % formats.size]) }
-          }
-        }
+        CaptureMode.PHOTO -> FormatPill(s.photoFormat.shortLabel, open, openFormat)
         CaptureMode.VIDEO -> {
-          val qualities = caps.videoQualities
-          FormatPill(camera.qualityLabel(), 0) {
-            if (qualities.size > 1) camera.update { it.copy(videoQuality = qualities[(qualities.indexOf(it.videoQuality) + 1) % qualities.size]) }
-          }
-          FormatPill("${s.frameRate}", 1) { camera.cycleFrameRate() }
+          FormatPill(camera.qualityLabel(), open, openFormat)
+          FormatPill("${s.frameRate}", open, openFormat)
         }
-        CaptureMode.SLOW_MO -> FormatPill("${s.slowMoFps}", 0) { camera.cycleFrameRate() }
+        CaptureMode.SLOW_MO -> FormatPill("${s.slowMoFps}", open, openFormat)
         CaptureMode.RAW_VIDEO -> {
-          FormatPill("RAW", 0) {}
-          FormatPill("${s.frameRate}", 1) { camera.cycleFrameRate() }
+          FormatPill("RAW", open, openFormat)
+          FormatPill("${s.frameRate}", open, openFormat)
         }
       }
     }
@@ -531,20 +532,20 @@ private fun TopBar(camera: TactsCamera, panel: Panel, onPanel: (Panel) -> Unit) 
   }
 }
 
-/** A small glass label for the format and frame rate; tapping it steps to the next one. */
+/** A small glass label for the format and frame rate; tapping it opens the format card. */
 @Composable
-private fun FormatPill(text: String, index: Int, onClick: () -> Unit) {
+private fun FormatPill(text: String, open: Boolean, onClick: () -> Unit) {
   Box(
     Modifier
       .height(48.dp)
       .clip(Shapes.pill)
-      .clickable(role = Role.Button, onClickLabel = "Change", onClick = onClick),
+      .clickable(role = Role.Button, onClickLabel = if (open) "Close format" else "Change format", onClick = onClick),
     contentAlignment = Alignment.Center
   ) {
     Text(
       text,
       style = AppText.Caption1.copy(fontFamily = JetBrainsMono, fontWeight = FontWeight.Bold),
-      color = MaterialTheme.colorScheme.onSurface,
+      color = if (open) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
       modifier = Modifier.floatingSurface(Shapes.pill).padding(horizontal = Space.m, vertical = Space.xs)
     )
   }
@@ -763,7 +764,6 @@ private val CaptureMode.shortLabel: String
 @Composable
 private fun ModeSwitch(camera: TactsCamera, modifier: Modifier) {
   val caps = camera.caps
-  val colors = MaterialTheme.colorScheme
   val modes = CaptureMode.entries.filter {
     when (it) {
       CaptureMode.SLOW_MO -> caps.highSpeedFps.isNotEmpty()
@@ -771,39 +771,7 @@ private fun ModeSwitch(camera: TactsCamera, modifier: Modifier) {
       else -> true
     }
   }
-  // The modes are words in one glass pill; the chosen one sits in an inner capsule, in the accent.
-  Box(modifier, contentAlignment = Alignment.Center) {
-    Row(
-      Modifier.floatingSurface(Shapes.pill).horizontalScroll(rememberScrollState()).padding(Space.xxs),
-      verticalAlignment = Alignment.CenterVertically
-    ) {
-      modes.forEachIndexed { i, m ->
-        val selected = camera.settings.mode == m
-        Box(
-          Modifier
-            .bounceEntrance(i)
-            .height(44.dp)
-            .clip(Shapes.pill)
-            .then(if (selected) Modifier.background(colors.onSurface.copy(alpha = 0.14f), Shapes.pill) else Modifier)
-            .selectable(selected = selected, enabled = !camera.isRecording, role = Role.Tab) { camera.update { it.copy(mode = m) } }
-            .semantics { contentDescription = m.label }
-            .padding(horizontal = Space.m),
-          contentAlignment = Alignment.Center
-        ) {
-          Text(
-            m.shortLabel,
-            style = AppText.Caption1.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp),
-            color = when {
-              selected -> colors.primary
-              camera.isRecording -> colors.onSurfaceVariant.copy(alpha = 0.5f)
-              else -> colors.onSurface
-            },
-            maxLines = 1
-          )
-        }
-      }
-    }
-  }
+  CompactModeSwitch(camera, modes, { it.shortLabel }, modifier)
 }
 
 /**
