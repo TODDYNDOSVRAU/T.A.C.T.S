@@ -170,7 +170,7 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
       GroupDivider()
       SliderRow("JPEG quality", s.jpegQuality.toFloat(), { v -> set { it.copy(jpegQuality = v.roundToInt()) } }, 70f..100f, "${s.jpegQuality}")
       GroupDivider()
-      SwitchRow("Zero shutter lag", s.zeroShutterLag, { v -> set { it.copy(zeroShutterLag = v) } }, subtitle = "Saves the frame at the press. Off waits for a fresh frame at full processing; flash and RAW always wait.")
+      SwitchRow("Zero shutter lag", s.zeroShutterLag, { v -> set { it.copy(zeroShutterLag = v) } }, subtitle = "Saves the frame at the press. Off waits for a fresh frame at full processing; flash and RAW always wait. On a Galaxy S23 the preview freezes when the zoom changes lens, so it is off by default.")
       GroupDivider()
       Pick("Self-timer", s.timerSeconds, listOf(0, 2, 3, 5, 10), { if (it == 0) "Off" else "$it s" }) { v -> set { it.copy(timerSeconds = v) } }
       GroupDivider()

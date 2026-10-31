@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -219,8 +220,12 @@ data class CameraSettings(
   val hdrStops: Float = 2f,
   val superResFrames: Int = 8,
   val jpegQuality: Int = 95,
-  /** Save the frame at the press from a buffer, where the camera supports it; off waits for a fresh, fully processed frame. */
-  val zeroShutterLag: Boolean = true,
+  /**
+   * Save the frame at the press from a buffer, where the camera supports it; off waits for a fresh, fully
+   * processed frame. Off by default: on a Galaxy S23 the preview freezes when the zoom changes lens. The key is
+   * new so that the old default (on) saved by earlier versions does not carry over.
+   */
+  @SerialName("zsl2") val zeroShutterLag: Boolean = false,
 
   // Video
   val videoQuality: VideoQuality = VideoQuality.FHD,
