@@ -683,6 +683,36 @@ class TactsCamera(private val context: Context) {
     camera?.cameraControl?.setZoomRatio(r)
   }
 
+  /** Off, auto, on in photo; off and torch in video. */
+  fun cycleFlash() = update {
+    it.copy(
+      flash = if (it.mode != CaptureMode.PHOTO) (if (it.flash == Flash.OFF) Flash.ON else Flash.OFF)
+      else Flash.entries[(it.flash.ordinal + 1) % Flash.entries.size]
+    )
+  }
+
+  /** The next frame rate this camera offers for the current mode. */
+  fun cycleFrameRate() {
+    val rates = if (settings.mode == CaptureMode.SLOW_MO) caps.highSpeedFps else caps.frameRates
+    if (rates.isEmpty()) return
+    update {
+      if (it.mode == CaptureMode.SLOW_MO) it.copy(slowMoFps = rates[(rates.indexOf(it.slowMoFps) + 1) % rates.size])
+      else it.copy(frameRate = rates[(rates.indexOf(it.frameRate) + 1) % rates.size])
+    }
+  }
+
+  /** "4K" or "4K HLG": the quality and, beyond SDR, the dynamic range. */
+  fun qualityLabel(): String {
+    val range = when (settings.dynamicRange) {
+      DynamicRangeChoice.SDR -> ""
+      DynamicRangeChoice.HLG -> " HLG"
+      DynamicRangeChoice.HDR10 -> " HDR10"
+      DynamicRangeChoice.HDR10_PLUS -> " HDR10+"
+      DynamicRangeChoice.DOLBY_VISION -> " DV"
+    }
+    return settings.videoQuality.label + range
+  }
+
   /** Jumps to a lens of the zoom capsule, rebinding when it is a camera of its own. */
   fun selectLens(stop: LensStop) {
     if (stop.cameraId == settings.cameraId) {

@@ -20,7 +20,9 @@ enum class Flash { OFF, AUTO, ON }
 
 // ---- photo ----
 
-enum class PhotoFormat(val label: String) { JPEG("JPEG"), ULTRA_HDR("Ultra HDR"), RAW("RAW (DNG)"), RAW_JPEG("RAW + JPEG") }
+enum class PhotoFormat(val label: String, val shortLabel: String) {
+  JPEG("JPEG", "JPEG"), ULTRA_HDR("Ultra HDR", "UHDR"), RAW("RAW (DNG)", "RAW"), RAW_JPEG("RAW + JPEG", "RAW+J")
+}
 
 enum class PhotoMode(val label: String) {
   SINGLE("Single"),
@@ -121,6 +123,13 @@ enum class FrameGuide(val label: String, val ratio: Float) {
   SOCIAL_45("4:5", 4f / 5f)
 }
 
+/** How controls over the viewfinder are drawn, as in T.A.R.K.A.S. */
+enum class GlassStyle(val label: String, val description: String) {
+  SOLID("Solid", "The app's colour, no blur. Lightest on the battery."),
+  FROSTED("Frosted glass", "Blurs the picture behind the controls."),
+  LIQUID("Liquid glass", "Glass that bends the picture behind it, with a lit edge (Android 13 or newer). Uses more of the GPU.")
+}
+
 enum class GridStyle(val label: String) { OFF("Off"), THIRDS("Thirds"), GOLDEN("Golden ratio"), CROSSHAIR("Crosshair"), SQUARES("Squares") }
 
 enum class Desqueeze(val label: String, val factor: Float) {
@@ -144,6 +153,7 @@ data class CameraSettings(
   val physicalCameraId: String? = null,
   /** A lens the phone lists as a camera of its own, outside the default camera's zoom range; null for the default camera. */
   val cameraId: String? = null,
+  val glass: GlassStyle = GlassStyle.LIQUID,
   val flash: Flash = Flash.OFF,
   val torchStrength: Int = 0,
   val lowLightBoost: Boolean = false,

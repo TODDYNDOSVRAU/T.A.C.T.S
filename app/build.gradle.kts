@@ -68,6 +68,9 @@ dependencies {
   // Settings are one serialized object in DataStore
   implementation(libs.androidx.datastore.preferences)
   implementation(libs.kotlinx.serialization.json)
+  // Glass from T.A.R.K.A.S.: frosted blur, and liquid glass (refraction) on Android 13+
+  implementation(libs.haze)
+  implementation(libs.backdrop)
   testImplementation(libs.junit)
   debugImplementation(libs.androidx.compose.ui.tooling)
 }

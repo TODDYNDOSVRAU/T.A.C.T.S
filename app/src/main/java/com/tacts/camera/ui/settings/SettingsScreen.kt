@@ -330,6 +330,14 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
     }
     GroupFooter("False colour: purple and blue are crushed, green is 18 % grey, pink is skin, yellow is near clipping, red is clipped.")
 
+    // ---- Interface ----
+    GroupHeader("INTERFACE")
+    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+      val styles = com.tacts.camera.camera.GlassStyle.entries.filter { it != com.tacts.camera.camera.GlassStyle.LIQUID || com.tacts.camera.ui.theme.liquidGlassSupported }
+      Pick("Controls", s.glass, styles, { it.label }, sub = { it.description }) { v -> set { it.copy(glass = v) } }
+    }
+    GroupFooter("Turning down transparency and blur in Android makes the controls solid.")
+
     // ---- Camera ----
     GroupHeader("CAMERA")
     InsetGroup(Modifier.bounceEntrance(next(), animate)) {

@@ -81,8 +81,13 @@ hidden or says why.
   (0.6, 1, 3 on a Galaxy S23; a 5× or 10× tele adds its own button). The figures come from each
   lens's focal length and sensor size, so they are right on any phone; a lens listed as a camera of
   its own, outside the main camera's zoom range, is opened directly
-- Controls laid out like the iOS 26 camera: flash on the left, the tools in one capsule in the
-  middle, PRO on the right; lenses over the frame; modes as words in a glass pill
+- Controls laid out after the iOS 26 camera: format and frame rate on the left, lights and looks in a
+  capsule on the right, the manual values (EV, ISO, shutter, focus, white balance) in a readout row
+  that opens each dial in a glass sheet; lenses over the frame; manual controls, shutter and a sheet
+  with every other control in one row; gallery, modes and camera switch under it
+- The glass of T.A.R.K.A.S.: **liquid glass** (refraction and a lit rim, Android 13+), **frosted
+  glass** or solid, in Settings → Interface. The glass blurs a small copy of the viewfinder, since
+  the camera's own surface cannot be recorded; Android's "reduce transparency and blur" makes it solid
 - **Camera info**: every Camera2 characteristic of every camera on the phone, a summary of what it
   supports, and its stream sizes
 - Every setting is kept between launches

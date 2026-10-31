@@ -1,6 +1,7 @@
 package com.tacts.camera.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -64,12 +66,61 @@ enum class ProTab(val label: String) { EV("EV"), ISO("ISO"), SHUTTER("S"), FOCUS
 
 private fun isVideo(camera: TactsCamera) = camera.settings.mode != CaptureMode.PHOTO
 
-/** The manual controls: a row of value chips, and a dial for the selected one under it. */
-@Composable
-fun ProPanel(camera: TactsCamera, tab: ProTab, onTab: (ProTab) -> Unit, modifier: Modifier = Modifier) {
+/** One manual value as shown on screen: its text, and whether it is set by hand (drawn in the accent). */
+data class ProReading(val tab: ProTab, val value: String, val manual: Boolean)
+
+/** The five manual values, as the camera uses them right now. */
+fun proReadings(camera: TactsCamera): List<ProReading> {
   val s = camera.settings
   val caps = camera.caps
   val live = camera.live
+  val angle = isVideo(camera) && s.shutterMode == ShutterMode.ANGLE
+  return listOf(
+    ProReading(ProTab.EV, if (s.aeLock) "AE-L" else evLabel(s.evIndex, caps.evStep), s.evIndex != 0 || s.aeLock),
+    ProReading(ProTab.ISO, if (s.exposureAuto) "${live.iso ?: "–"}" else "${s.iso}", !s.exposureAuto),
+    ProReading(
+      ProTab.SHUTTER,
+      when {
+        angle && !s.exposureAuto -> angleLabel(s.shutterAngle)
+        s.exposureAuto -> live.shutterNs?.let(::shutterLabel) ?: "–"
+        else -> shutterLabel(s.shutterNs)
+      },
+      !s.exposureAuto
+    ),
+    ProReading(ProTab.FOCUS, if (s.focusAuto) "AF" else focusLabel(s.focusDiopters), !s.focusAuto),
+    ProReading(
+      ProTab.WB,
+      when (s.wbMode) {
+        WhiteBalanceMode.AUTO -> if (s.awbLock) "AWB-L" else "AWB"
+        WhiteBalanceMode.PRESET -> "${s.whiteBalance.kelvin}K"
+        WhiteBalanceMode.KELVIN -> "${s.kelvin}K"
+      },
+      s.wbMode != WhiteBalanceMode.AUTO || s.awbLock
+    )
+  )
+}
+
+/** A soft shadow under text drawn straight on the picture, so it reads over bright scenes. */
+private val READABLE = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.6f), blurRadius = 6f)
+
+/** What each dial sets, as the sheet's title. */
+val ProTab.title: String
+  get() = when (this) {
+    ProTab.EV -> "EXPOSURE"
+    ProTab.ISO -> "ISO"
+    ProTab.SHUTTER -> "SHUTTER SPEED"
+    ProTab.FOCUS -> "FOCUS"
+    ProTab.WB -> "WHITE BALANCE"
+  }
+
+/**
+ * The manual controls as a glass sheet: the selected value's dial under a title, with a close button.
+ * The values themselves are on the readout row at the top of the screen, which picks the tab.
+ */
+@Composable
+fun ProPanel(camera: TactsCamera, tab: ProTab, onClose: () -> Unit, modifier: Modifier = Modifier) {
+  val s = camera.settings
+  val caps = camera.caps
   val angle = isVideo(camera) && s.shutterMode == ShutterMode.ANGLE
 
   Column(
@@ -78,38 +129,24 @@ fun ProPanel(camera: TactsCamera, tab: ProTab, onTab: (ProTab) -> Unit, modifier
       .padding(horizontal = Space.s)
       .bounceEntrance()
       .floatingSurface(Shapes.l)
-      .padding(horizontal = Space.m, vertical = Space.m)
+      .padding(horizontal = Space.m, vertical = Space.s)
   ) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-      ProChip(ProTab.EV, if (s.aeLock) "AE-L" else evLabel(s.evIndex, caps.evStep), s.evIndex != 0 || s.aeLock, tab == ProTab.EV, 0, onTab)
-      ProChip(ProTab.ISO, if (s.exposureAuto) "${live.iso ?: "–"}" else "${s.iso}", !s.exposureAuto, tab == ProTab.ISO, 1, onTab)
-      ProChip(
-        ProTab.SHUTTER,
-        when {
-          angle && !s.exposureAuto -> angleLabel(s.shutterAngle)
-          s.exposureAuto -> live.shutterNs?.let(::shutterLabel) ?: "–"
-          else -> shutterLabel(s.shutterNs)
-        },
-        !s.exposureAuto,
-        tab == ProTab.SHUTTER,
-        2,
-        onTab
+    Box(Modifier.fillMaxWidth().height(40.dp)) {
+      com.tacts.camera.ui.components.IconAction(
+        androidx.compose.material.icons.Icons.Rounded.Close,
+        contentDescription = "Close",
+        onClick = onClose,
+        tint = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.align(Alignment.CenterStart)
       )
-      ProChip(ProTab.FOCUS, if (s.focusAuto) "AF" else focusLabel(s.focusDiopters), !s.focusAuto, tab == ProTab.FOCUS, 3, onTab)
-      ProChip(
-        ProTab.WB,
-        when (s.wbMode) {
-          WhiteBalanceMode.AUTO -> if (s.awbLock) "AWB-L" else "AWB"
-          WhiteBalanceMode.PRESET -> "${s.whiteBalance.kelvin}K"
-          WhiteBalanceMode.KELVIN -> "${s.kelvin}K"
-        },
-        s.wbMode != WhiteBalanceMode.AUTO || s.awbLock,
-        tab == ProTab.WB,
-        4,
-        onTab
+      Text(
+        tab.title,
+        style = AppText.Caption1.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp),
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.align(Alignment.Center)
       )
     }
-    Spacer(Modifier.height(Space.s))
+    Spacer(Modifier.height(Space.xs))
     when (tab) {
       ProTab.EV -> EvDial(camera)
       ProTab.ISO -> if (caps.isoValues.isEmpty()) Unsupported() else StepDial(
@@ -153,24 +190,34 @@ private fun evLabel(index: Int, step: Float): String {
   return if (abs(ev) < 0.01f) "±0" else (if (ev > 0) "+" else "−") + "%.1f".format(abs(ev))
 }
 
+/**
+ * The readout row at the top of the screen: each value over its name, in the accent when set by hand.
+ * Tapping one opens its dial; the open one sits on a quiet fill.
+ */
 @Composable
-private fun ProChip(tab: ProTab, value: String, manual: Boolean, selected: Boolean, index: Int, onTab: (ProTab) -> Unit) {
+fun ProReadoutRow(camera: TactsCamera, selected: ProTab?, onTab: (ProTab) -> Unit, modifier: Modifier = Modifier) {
   val colors = MaterialTheme.colorScheme
-  Column(
-    Modifier
-      .bounceEntrance(index)
-      .glassControl(Shapes.s, selected)
-      .selectable(selected = selected, role = Role.Tab) { onTab(tab) }
-      .padding(horizontal = Space.s, vertical = Space.s),
-    horizontalAlignment = Alignment.CenterHorizontally
-  ) {
-    Text(tab.label, style = AppText.Caption2.copy(fontWeight = FontWeight.SemiBold), color = colors.onSurfaceVariant)
-    Text(
-      value,
-      style = AppText.Subhead.copy(fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium),
-      color = if (manual) colors.primary else colors.onSurface,
-      maxLines = 1
-    )
+  Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+    proReadings(camera).forEachIndexed { i, r ->
+      val isSelected = r.tab == selected
+      Column(
+        Modifier
+          .bounceEntrance(i)
+          .clip(Shapes.s)
+          .then(if (isSelected) Modifier.background(colors.onSurface.copy(alpha = 0.14f), Shapes.s) else Modifier)
+          .selectable(selected = isSelected, role = Role.Tab) { onTab(r.tab) }
+          .padding(horizontal = Space.s, vertical = Space.xs),
+        horizontalAlignment = Alignment.CenterHorizontally
+      ) {
+        Text(
+          r.value,
+          style = AppText.Subhead.copy(fontFamily = JetBrainsMono, fontWeight = FontWeight.Medium, shadow = READABLE),
+          color = if (r.manual) colors.primary else colors.onSurface,
+          maxLines = 1
+        )
+        Text(r.tab.label, style = AppText.Caption2.copy(fontWeight = FontWeight.SemiBold, shadow = READABLE), color = colors.onSurface.copy(alpha = 0.7f))
+      }
+    }
   }
 }
 
