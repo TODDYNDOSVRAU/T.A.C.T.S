@@ -4,7 +4,7 @@
 
 <h1 align="center">T.A.C.T.S.</h1>
 
-<p align="center"><b>TOTTALLY ACCURATE CAMERA TECHNOLOGY SYSTEM</b></p>
+<p align="center"><b>TOTALLY ACCURATE CAMERA TECHNOLOGY SYSTEM</b></p>
 
 <p align="center">Pro camera for Android: manual control of the sensor, cinema monitoring tools, log profiles, LUTs and RAW video.</p>
 
@@ -70,10 +70,10 @@ hidden or says why.
 
 **Photo**
 - JPEG (quality 70–100), **Ultra HDR**, **RAW (DNG)**, **RAW + JPEG**
-- **Burst**, **interval / timelapse**, **AE bracketing** (3–9 shots, ±0.3 to ±3 EV),
-  **focus bracketing** for focus stacking
-- Modes made from several frames, each frame aligned to the first tile by tile, with what moved
-  between frames taken from one frame only:
+- Drive modes in the format card: **single**, **burst**, **interval / timelapse**, **AE bracketing**
+  (3–9 shots, ±0.3 to ±3 EV), **focus bracketing** for focus stacking
+- Modes made from several frames, in the mode bar to the left of PHOTO. Each frame is aligned to the
+  first tile by tile, and what moved between frames is taken from one frame only:
   - **Night**: 2–32 frames averaged to cut noise
   - **HDR**: three exposures (±1 to ±3 EV) fused, each part from the frame where it is best exposed
   - **Super-res**: 4–16 hand-held frames added on a grid twice as fine, 8160×6120 from 4080×3060 on a
@@ -92,14 +92,18 @@ hidden or says why.
   (0.6, 1, 3 on a Galaxy S23; a 5× or 10× tele adds its own button). The figures come from each
   lens's focal length and sensor size, so they are right on any phone; a lens listed as a camera of
   its own, outside the main camera's zoom range, is opened directly
-- Controls laid out after the iOS 26 camera: format and frame rate on the left, and a tap on them opens a
-  card with every format, resolution and frame rate the camera offers; lights and looks in a capsule on the
-  right; lenses over the frame, and holding a lens or sliding across them turns a **zoom wheel** (log scale,
-  a tick felt at each lens); the mode bar shows photo and video, and holding it, sliding across it or
-  tapping + shows every mode; the ƒ button shows the manual values (EV, ISO,
-  shutter, focus, white balance) above the shutter, and tapping one opens its dial under the shutter:
-  the value large, a ruler of ticks to drag, A for auto; a sheet with every other control; gallery,
-  modes and camera switch at the bottom
+- Controls laid out after the iOS 26 camera:
+  - **Top left**: the format pills (JPEG, 4K HLG, 30). A tap opens a card with every format, dynamic
+    range, resolution, frame rate and drive mode the camera offers
+  - **Top right**: flash, monitoring and looks in one capsule
+  - **Over the frame**: one button per lens. Holding a lens or sliding across them turns a **zoom
+    wheel**: log scale, the lenses marked on it, a tick felt as each one passes
+  - **Mode bar**: PHOTO and VIDEO in the middle; Night, HDR and Super-res on the left, slow motion
+    and RAW video on the right. A + on each side, a hold or a slide opens the bar toward that side
+  - **ƒ**: the manual values (EV, ISO, shutter, focus, white balance) above the shutter; tapping one
+    opens its dial: the value large, a ruler of ticks to drag, A for auto
+  - **▦**: a sheet with every other control, and Settings
+  - **Bottom corners**: the last capture (opens it in the gallery) and the camera switch
 - The glass of T.A.R.K.A.S.: **liquid glass** (refraction and a lit rim, Android 13+), **frosted
   glass** or solid, in Settings → Interface. The glass blurs a small copy of the viewfinder, since
   the camera's own surface cannot be recorded; Android's "reduce transparency and blur" makes it solid
@@ -136,12 +140,15 @@ What the app can do depends on the phone's camera (Settings > Camera info shows 
   that reaches storage depends on the phone (on a Galaxy S23, about 10 of 181 frames were dropped in
   6 s); dropped frames are counted on screen and in the final notice.
 - Which physical lens streams at a given zoom is the phone's choice. On a Galaxy S23, 3× in 4K HLG
-  video stays on the wide lens, cropped (in photo, 3× uses the tele). Settings → Lenses can lock one lens; that lock is not yet
-  tested with 10-bit video. No sound is recorded
-  with RAW video.
+  video stays on the wide lens, cropped (in photo, 3× uses the tele). Settings → Lenses can lock one
+  lens; that lock is not yet tested with 10-bit video.
+- No sound is recorded with RAW video.
+- **Zero shutter lag** is off by default: on a Galaxy S23 it froze the preview whenever the zoom
+  changed lens. It can be turned on in Settings, with that risk.
 - Log profiles are curves on the phone's image processor, not a manufacturer's log.
-- Night, HDR and Super-res need the JPEG format, and work from the phone's processed JPEGs, not RAW.
-  HDR does not yet keep moving things from doubling. Super-res's gain in detail has not yet been
+- Night, HDR and Super-res need the JPEG format, and work from the phone's processed JPEGs, not RAW;
+  choosing one of them switches the format to JPEG and says so. HDR does not yet keep moving things
+  from doubling. Super-res's gain in detail has not yet been
   measured on a lit test scene. Presets are not yet tested on the phone.
 - On a phone that reports a resolution higher than 12 MP only to its maker's own apps (the Galaxy S23
   with its 50 MP and 8K modes), third-party apps, this one included, get 12 MP and 4K30 at most.
