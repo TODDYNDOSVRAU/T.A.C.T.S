@@ -502,7 +502,11 @@ private fun TopBar(camera: TactsCamera, panel: Panel, onPanel: (Panel) -> Unit) 
       val open = panel == Panel.FORMAT
       val openFormat = { onPanel(Panel.FORMAT) }
       when (s.mode) {
-        CaptureMode.PHOTO -> FormatPill(s.photoFormat.shortLabel, open, openFormat)
+        CaptureMode.PHOTO -> {
+          FormatPill(s.photoFormat.shortLabel, open, openFormat)
+          // A drive mode other than a single shot is named here, so it is never on without showing.
+          if (s.photoMode in DriveModes && s.photoMode != PhotoMode.SINGLE) FormatPill(s.photoMode.driveLabel, open, openFormat)
+        }
         CaptureMode.VIDEO -> {
           FormatPill(camera.qualityLabel(), open, openFormat)
           FormatPill("${s.frameRate}", open, openFormat)
@@ -775,22 +779,39 @@ private val CaptureMode.shortLabel: String
     CaptureMode.RAW_VIDEO -> "RAW"
   }
 
+/** Night, HDR and Super-res: photo modes made from several frames, on the left of PHOTO in the bar. */
+private val BarPhotoModes = listOf(PhotoMode.SUPER_RES, PhotoMode.HDR, PhotoMode.NIGHT)
+
 @Composable
 private fun ModeSwitch(camera: TactsCamera, modifier: Modifier) {
   val caps = camera.caps
-  val modes = CaptureMode.entries.filter {
-    when (it) {
-      CaptureMode.SLOW_MO -> caps.highSpeedFps.isNotEmpty()
-      CaptureMode.RAW_VIDEO -> caps.rawCapable
-      else -> true
-    }
+  val s = camera.settings
+  val photo = s.mode == CaptureMode.PHOTO
+  fun capture(m: CaptureMode) = BarMode(m.shortLabel, m.label, if (m == CaptureMode.PHOTO || m == CaptureMode.VIDEO) 0 else 1, s.mode == m && m != CaptureMode.PHOTO) {
+    camera.update { it.copy(mode = m) }
   }
-  CompactModeSwitch(camera, modes, { it.shortLabel }, modifier)
+  val modes = buildList {
+    BarPhotoModes.forEach { pm ->
+      add(BarMode(pm.label.uppercase(), pm.label, -1, photo && s.photoMode == pm) {
+        // These modes merge processed JPEGs; another format is switched to JPEG, and the notice says so.
+        val format = camera.settings.photoFormat
+        camera.update { it.copy(mode = CaptureMode.PHOTO, photoMode = pm, photoFormat = PhotoFormat.JPEG) }
+        if (format != PhotoFormat.JPEG) camera.notice = "${pm.label} saves JPEG: the format changed from ${format.label}."
+      })
+    }
+    add(BarMode("PHOTO", CaptureMode.PHOTO.label, 0, photo && s.photoMode !in BarPhotoModes) {
+      camera.update { it.copy(mode = CaptureMode.PHOTO, photoMode = if (it.photoMode in BarPhotoModes) PhotoMode.SINGLE else it.photoMode) }
+    })
+    add(capture(CaptureMode.VIDEO))
+    if (caps.highSpeedFps.isNotEmpty()) add(capture(CaptureMode.SLOW_MO))
+    if (caps.rawCapable) add(capture(CaptureMode.RAW_VIDEO))
+  }
+  CompactModeSwitch(camera, modes, modifier)
 }
 
 /**
- * Everything that is not on screen all the time, in one glass sheet: the photo drive modes on top,
- * then round buttons with their names, three to a row.
+ * Everything that is not on screen all the time, in one glass sheet: round buttons with their names,
+ * three to a row. The photo modes are in the mode bar and the format card, not here.
  */
 @Composable
 private fun ControlsSheet(camera: TactsCamera, onSettings: () -> Unit, onPanel: (Panel) -> Unit, onExposure: () -> Unit) {
@@ -836,10 +857,6 @@ private fun ControlsSheet(camera: TactsCamera, onSettings: () -> Unit, onPanel: 
     horizontalAlignment = Alignment.CenterHorizontally
   ) {
     Box(Modifier.size(width = 36.dp, height = 4.dp).clip(Shapes.pill).background(colors.onSurfaceVariant.copy(alpha = 0.5f)))
-    if (s.mode == CaptureMode.PHOTO) {
-      Spacer(Modifier.height(Space.xs))
-      PhotoModes(camera)
-    }
     Spacer(Modifier.height(Space.s))
     buttons.chunked(3).forEach { row ->
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -878,37 +895,6 @@ private fun ControlButton(
     }
     Spacer(Modifier.height(Space.xs))
     Text(label, style = AppText.Caption2.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp), color = colors.onSurface, maxLines = 1)
-  }
-}
-
-@Composable
-private fun PhotoModes(camera: TactsCamera) {
-  val colors = MaterialTheme.colorScheme
-  Row(
-    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.s),
-    horizontalArrangement = Arrangement.spacedBy(Space.xxs, Alignment.CenterHorizontally)
-  ) {
-    // Plain words, the chosen one in the accent.
-    PhotoMode.entries.forEachIndexed { i, m ->
-      val selected = camera.settings.photoMode == m
-      Box(
-        Modifier
-          .entrance(i)
-          .height(40.dp)
-          .clip(Shapes.pill)
-          .then(if (selected) Modifier.background(colors.onSurface.copy(alpha = 0.14f), Shapes.pill) else Modifier)
-          .selectable(selected = selected, enabled = camera.progress == null, role = Role.Tab) { camera.update { it.copy(photoMode = m) } }
-          .padding(horizontal = Space.m),
-        contentAlignment = Alignment.Center
-      ) {
-        Text(
-          m.label.uppercase(),
-          style = AppText.Caption1.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp),
-          color = if (selected) colors.primary else colors.onSurfaceVariant,
-          maxLines = 1
-        )
-      }
-    }
   }
 }
 

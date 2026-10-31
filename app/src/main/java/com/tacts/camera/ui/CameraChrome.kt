@@ -17,6 +17,15 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.tacts.camera.camera.CaptureMode
 import com.tacts.camera.camera.DynamicRangeChoice
 import com.tacts.camera.camera.PhotoFormat
+import com.tacts.camera.camera.PhotoMode
 import com.tacts.camera.camera.TactsCamera
 import com.tacts.camera.camera.formatFactor
 import com.tacts.camera.ui.theme.AppMotion
@@ -112,6 +122,11 @@ internal fun FormatPanel(camera: TactsCamera, visible: Boolean, modifier: Modifi
           FormatRow("FORMAT", PhotoFormat.entries.filter { it in caps.photoFormats }, s.photoFormat, { it.shortLabel }) { f ->
             camera.update { it.copy(photoFormat = f) }
           }
+          // How the shutter takes the photo. Night, HDR and Super-res are modes of the bar instead, so
+          // while one of them is on, no option here carries the dot.
+          FormatRow("DRIVE", DriveModes, s.photoMode.takeIf { it in DriveModes }, { it.driveLabel }) { m ->
+            camera.update { it.copy(photoMode = m) }
+          }
         }
         CaptureMode.VIDEO -> {
           FormatRow("RANGE", DynamicRangeChoice.entries.filter { it in caps.dynamicRanges }, s.dynamicRange, { it.shortLabel }) { r ->
@@ -129,6 +144,16 @@ internal fun FormatPanel(camera: TactsCamera, visible: Boolean, modifier: Modifi
   }
 }
 
+/** The photo modes that change how the shutter fires, kept in the format card. */
+internal val DriveModes = listOf(PhotoMode.SINGLE, PhotoMode.BURST, PhotoMode.INTERVAL, PhotoMode.BRACKET, PhotoMode.FOCUS_BRACKET)
+
+internal val PhotoMode.driveLabel: String
+  get() = when (this) {
+    PhotoMode.BRACKET -> "AE BKT"
+    PhotoMode.FOCUS_BRACKET -> "FOCUS BKT"
+    else -> label.uppercase()
+  }
+
 private val DynamicRangeChoice.shortLabel: String
   get() = when (this) {
     DynamicRangeChoice.SDR -> "SDR"
@@ -139,7 +164,7 @@ private val DynamicRangeChoice.shortLabel: String
   }
 
 @Composable
-private fun <T> FormatRow(title: String, options: List<T>, chosen: T, label: (T) -> String, onChoose: (T) -> Unit) {
+private fun <T> FormatRow(title: String, options: List<T>, chosen: T?, label: (T) -> String, onChoose: (T) -> Unit) {
   if (options.isEmpty()) return
   val colors = MaterialTheme.colorScheme
   Row(Modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -149,7 +174,12 @@ private fun <T> FormatRow(title: String, options: List<T>, chosen: T, label: (T)
       color = colors.onSurfaceVariant,
       modifier = Modifier.width(92.dp)
     )
-    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(Space.xxs), verticalAlignment = Alignment.CenterVertically) {
+    val scroll = rememberScrollState()
+    Row(
+      Modifier.weight(1f).edgeFade(scroll).horizontalScroll(scroll),
+      horizontalArrangement = Arrangement.spacedBy(Space.xxs),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
       options.forEach { option ->
         val selected = option == chosen
         Row(
@@ -179,26 +209,39 @@ private fun <T> FormatRow(title: String, options: List<T>, chosen: T, label: (T)
 // ---- mode bar ----
 
 /**
- * The modes as the iOS 26 camera shows them: only photo and video (and the mode in use, when it is
- * another), so the bar stays small. Holding a mode, sliding across the bar or tapping the "+" shows
- * every mode; picking one, or four seconds without a touch, folds it back.
+ * One word of the mode bar. [side] places it: 0 for photo and video, -1 for the photo modes kept to
+ * the left of PHOTO, 1 for the video modes kept to the right of VIDEO.
+ */
+internal class BarMode(val label: String, val description: String, val side: Int, val selected: Boolean, val select: () -> Unit)
+
+/**
+ * The modes as the iOS 26 camera shows them: photo and video in the middle (and the mode in use, when
+ * it is another), so the bar stays small. The photo modes wait on the left and the video modes on the
+ * right; a "+" on each side says more is there. Tapping a "+", holding a mode or sliding across the
+ * bar opens it, scrolled toward that side; picking a mode, or four seconds without a touch, folds it.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun CompactModeSwitch(
-  camera: TactsCamera,
-  modes: List<CaptureMode>,
-  label: (CaptureMode) -> String,
-  modifier: Modifier
-) {
+internal fun CompactModeSwitch(camera: TactsCamera, modes: List<BarMode>, modifier: Modifier) {
   val colors = MaterialTheme.colorScheme
-  val current = camera.settings.mode
   var expanded by remember { mutableStateOf(false) }
+  // Which side the bar was opened toward: -1 the photo modes, 1 the video modes.
+  var toward by remember { mutableIntStateOf(0) }
   var touch by remember { mutableIntStateOf(0) }
-  val compact = modes.filter { it == CaptureMode.PHOTO || it == CaptureMode.VIDEO || it == current }
-  val hidden = modes.size > compact.size
+  val compact = modes.filter { it.side == 0 || it.selected }
+  val hiddenLeft = modes.any { it.side < 0 && it !in compact }
+  val hiddenRight = modes.any { it.side > 0 && it !in compact }
+  val hidden = hiddenLeft || hiddenRight
   val shown = if (expanded) modes else compact
   val slop = with(LocalDensity.current) { 10.dp.toPx() }
+  val scroll = rememberScrollState()
+  val spring = spring<Float>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 439f)
+
+  fun open(side: Int) {
+    toward = side
+    expanded = true
+    touch++
+  }
 
   LaunchedEffect(expanded, touch) {
     if (expanded) {
@@ -206,58 +249,61 @@ internal fun CompactModeSwitch(
       expanded = false
     }
   }
+  LaunchedEffect(expanded, toward) {
+    if (!expanded) return@LaunchedEffect
+    // Wait for the opened bar to be measured, then bring the chosen side into view.
+    withFrameNanos { }
+    withFrameNanos { }
+    val target = if (toward < 0) 0 else scroll.maxValue
+    if (AppMotion.reduced) scroll.scrollTo(target) else scroll.animateScrollTo(target, spring)
+  }
 
   Box(modifier, contentAlignment = Alignment.Center) {
     Row(
       Modifier
         .floatingSurface(Shapes.pill)
         .then(if (AppMotion.reduced) Modifier else Modifier.animateContentSize(spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 439f)))
-        .pointerInput(hidden) {
-          if (!hidden) return@pointerInput
-          var dragged = 0f
-          detectHorizontalDragGestures(
-            onDragStart = { dragged = 0f },
-            onHorizontalDrag = { _, dx ->
+        .then(
+          if (expanded) Modifier.edgeFade(scroll).horizontalScroll(scroll)
+          else Modifier.pointerInput(hidden) {
+            if (!hidden) return@pointerInput
+            var dragged = 0f
+            detectHorizontalDragGestures(onDragStart = { dragged = 0f }) { _, dx ->
               dragged += dx
-              if (abs(dragged) > slop && !expanded) expanded = true
-              touch++
+              // Sliding right pulls in what is on the left, as a strip of film would.
+              if (abs(dragged) > slop && !expanded) open(if (dragged > 0) -1 else 1)
             }
-          )
-        }
+          }
+        )
         .padding(Space.xxs),
       verticalAlignment = Alignment.CenterVertically
     ) {
+      if (hiddenLeft && !expanded) MoreButton(camera, "Show photo modes") { open(-1) }
       shown.forEach { m ->
-        val selected = current == m
         Box(
           Modifier
             .height(44.dp)
             .clip(Shapes.pill)
-            .then(if (selected) Modifier.background(colors.onSurface.copy(alpha = 0.14f), Shapes.pill) else Modifier)
+            .then(if (m.selected) Modifier.background(colors.onSurface.copy(alpha = 0.14f), Shapes.pill) else Modifier)
             .combinedClickable(
               enabled = !camera.isRecording,
               role = Role.Tab,
               onLongClickLabel = if (hidden) "Show all modes" else null,
-              onLongClick = {
-                if (hidden) {
-                  expanded = true
-                  touch++
-                }
-              },
+              onLongClick = { if (hidden) open(m.side.takeIf { it != 0 } ?: -1) },
               onClick = {
-                camera.update { it.copy(mode = m) }
+                m.select()
                 expanded = false
               }
             )
-            .semantics { this.selected = selected; contentDescription = m.label }
+            .semantics { this.selected = m.selected; contentDescription = m.description }
             .padding(horizontal = Space.m),
           contentAlignment = Alignment.Center
         ) {
           Text(
-            label(m),
+            m.label,
             style = AppText.Caption1.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.8.sp),
             color = when {
-              selected -> colors.primary
+              m.selected -> colors.primary
               camera.isRecording -> colors.onSurfaceVariant.copy(alpha = 0.5f)
               else -> colors.onSurface
             },
@@ -265,24 +311,42 @@ internal fun CompactModeSwitch(
           )
         }
       }
-      if (hidden && !expanded) {
-        Box(
-          Modifier
-            .size(44.dp)
-            .clip(CircleShape)
-            .clickable(enabled = !camera.isRecording, role = Role.Button) {
-              expanded = true
-              touch++
-            }
-            .semantics { contentDescription = "Show all modes" },
-          contentAlignment = Alignment.Center
-        ) {
-          Text("+", style = AppText.Body.copy(fontWeight = FontWeight.Medium), color = colors.onSurfaceVariant)
-        }
-      }
+      if (hiddenRight && !expanded) MoreButton(camera, "Show video modes") { open(1) }
     }
   }
 }
+
+@Composable
+private fun MoreButton(camera: TactsCamera, description: String, onClick: () -> Unit) {
+  Box(
+    Modifier
+      .size(44.dp)
+      .clip(CircleShape)
+      .clickable(enabled = !camera.isRecording, role = Role.Button, onClick = onClick)
+      .semantics { contentDescription = description },
+    contentAlignment = Alignment.Center
+  ) {
+    Text("+", style = AppText.Body.copy(fontWeight = FontWeight.Medium), color = MaterialTheme.colorScheme.onSurfaceVariant)
+  }
+}
+
+/** Fades the ends of a scrolled row where more is beyond them, instead of cutting a word in half. */
+internal fun Modifier.edgeFade(scroll: androidx.compose.foundation.ScrollState, width: androidx.compose.ui.unit.Dp = 24.dp): Modifier =
+  this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+      drawContent()
+      val w = width.toPx()
+      if (scroll.value > 0) {
+        drawRect(Brush.horizontalGradient(listOf(Color.Transparent, Color.Black), startX = 0f, endX = w), size = Size(w, size.height), blendMode = BlendMode.DstIn)
+      }
+      if (scroll.value < scroll.maxValue) {
+        drawRect(
+          Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = size.width - w, endX = size.width),
+          topLeft = Offset(size.width - w, 0f), size = Size(w, size.height), blendMode = BlendMode.DstIn
+        )
+      }
+    }
 
 // ---- zoom ----
 
