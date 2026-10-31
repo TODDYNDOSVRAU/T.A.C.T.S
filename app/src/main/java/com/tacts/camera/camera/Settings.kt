@@ -142,6 +142,8 @@ data class CameraSettings(
   val lensFacing: Int = androidx.camera.core.CameraSelector.LENS_FACING_BACK,
   /** A physical lens of a logical multi-camera, or null for the logical camera. */
   val physicalCameraId: String? = null,
+  /** A lens the phone lists as a camera of its own, outside the default camera's zoom range; null for the default camera. */
+  val cameraId: String? = null,
   val flash: Flash = Flash.OFF,
   val torchStrength: Int = 0,
   val lowLightBoost: Boolean = false,

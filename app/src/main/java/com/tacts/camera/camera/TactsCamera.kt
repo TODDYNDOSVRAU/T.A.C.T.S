@@ -20,6 +20,7 @@ import android.view.OrientationEventListener
 import android.view.Surface
 import android.view.View
 import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
@@ -106,6 +107,14 @@ class TactsCamera(private val context: Context) {
     private set
   var maxZoom by mutableFloatStateOf(1f)
     private set
+  /** The lenses of the current facing, for the zoom capsule. */
+  var lensStops by mutableStateOf<List<LensStop>>(emptyList())
+    private set
+  /** The zoom as the phone's own camera app names it: 0.6 on the ultra-wide, 3 on a 3× tele. */
+  val zoomFactor: Float
+    get() = (settings.cameraId?.let { id -> lensStops.firstOrNull { it.cameraId == id }?.factor } ?: 1f) * zoomRatio
+  /** The zoom to set after the next bind; null keeps the current one. */
+  private var pendingZoom: Float? = null
 
   var isRecording by mutableStateOf(false)
     private set
@@ -233,7 +242,24 @@ class TactsCamera(private val context: Context) {
     false
   }
 
-  private fun selector() = CameraSelector.Builder().requireLensFacing(settings.lensFacing).build()
+  private fun selector(): CameraSelector {
+    val builder = CameraSelector.Builder().requireLensFacing(settings.lensFacing)
+    settings.cameraId?.let { id ->
+      builder.addCameraFilter { infos -> infos.filter { Camera2CameraInfo.from(it).cameraId == id }.ifEmpty { infos } }
+    }
+    return builder.build()
+  }
+
+  /** The camera ids CameraX can open for the current facing, the one it picks by default first. */
+  private fun facingCameraIds(provider: ProcessCameraProvider): List<String> = try {
+    val default = Camera2CameraInfo.from(provider.getCameraInfo(CameraSelector.Builder().requireLensFacing(settings.lensFacing).build())).cameraId
+    val all = provider.availableCameraInfos
+      .filter { it.lensFacing == settings.lensFacing }
+      .map { Camera2CameraInfo.from(it).cameraId }
+    listOf(default) + (all - default)
+  } catch (e: Exception) {
+    emptyList()
+  }
 
   // ---- settings ----
 
@@ -278,7 +304,7 @@ class TactsCamera(private val context: Context) {
   }
 
   private fun needsRebind(a: CameraSettings, b: CameraSettings): Boolean =
-    a.mode != b.mode || a.lensFacing != b.lensFacing || a.physicalCameraId != b.physicalCameraId ||
+    a.mode != b.mode || a.lensFacing != b.lensFacing || a.physicalCameraId != b.physicalCameraId || a.cameraId != b.cameraId ||
       a.photoFormat != b.photoFormat || a.jpegQuality != b.jpegQuality ||
       a.videoQuality != b.videoQuality || a.frameRate != b.frameRate || a.bitrate != b.bitrate ||
       a.dynamicRange != b.dynamicRange || a.stabilization != b.stabilization || a.slowMoFps != b.slowMoFps ||
@@ -342,6 +368,12 @@ class TactsCamera(private val context: Context) {
       CameraCaps.read(provider.getCameraInfo(selector))
     } catch (e: Exception) {
       CameraCaps()
+    }
+    lensStops = Lenses.stops(context, facingCameraIds(provider))
+    // A lens of its own that this phone no longer lists falls back to the default camera.
+    if (s.cameraId != null && lensStops.none { it.cameraId == s.cameraId }) {
+      update { it.copy(cameraId = null) }
+      return
     }
     monitorConfig = MonitorConfig.from(s, s.lensFacing == CameraSelector.LENS_FACING_FRONT)
 
@@ -412,7 +444,9 @@ class TactsCamera(private val context: Context) {
       minZoom = it.minZoomRatio
       maxZoom = it.maxZoomRatio
     }
-    zoomRatio = 1f.coerceIn(minZoom, maxZoom)
+    // The zoom survives a mode change, as in the phone's own camera app.
+    zoomRatio = (pendingZoom ?: zoomRatio).coerceIn(minZoom, maxZoom)
+    pendingZoom = null
     cam.cameraControl.setZoomRatio(zoomRatio)
     applyTorch()
     applyLowLight()
@@ -551,8 +585,10 @@ class TactsCamera(private val context: Context) {
         frameDurationNs = result.get(CaptureResult.SENSOR_FRAME_DURATION),
         ccTransform = result.get(CaptureResult.COLOR_CORRECTION_TRANSFORM),
         ccGains = result.get(CaptureResult.COLOR_CORRECTION_GAINS),
-        faces = result.get(CaptureResult.STATISTICS_FACES)?.map { it.bounds } ?: emptyList()
+        faces = result.get(CaptureResult.STATISTICS_FACES)?.map { it.bounds } ?: emptyList(),
+        activeLens = if (android.os.Build.VERSION.SDK_INT >= 29) result.get(CaptureResult.LOGICAL_MULTI_CAMERA_ACTIVE_PHYSICAL_ID) else null
       )
+      if (readout.activeLens != live.activeLens) android.util.Log.i("TACTS", "active lens ${readout.activeLens} at zoom $zoomRatio")
       mainExecutor.execute {
         // Kelvin mode keeps the colour transform auto had chosen; do not overwrite it with its own.
         live = if (settings.wbMode == WhiteBalanceMode.AUTO) readout else readout.copy(ccTransform = live.ccTransform ?: readout.ccTransform, ccGains = live.ccGains)
@@ -645,6 +681,20 @@ class TactsCamera(private val context: Context) {
     val r = ratio.coerceIn(minZoom, maxZoom)
     zoomRatio = r
     camera?.cameraControl?.setZoomRatio(r)
+  }
+
+  /** Jumps to a lens of the zoom capsule, rebinding when it is a camera of its own. */
+  fun selectLens(stop: LensStop) {
+    if (stop.cameraId == settings.cameraId) {
+      setZoom(stop.zoom)
+      return
+    }
+    if (isRecording) {
+      notice = "Stop recording to change lens"
+      return
+    }
+    pendingZoom = stop.zoom
+    update { it.copy(cameraId = stop.cameraId, physicalCameraId = null) }
   }
 
   /** Tap: focus (and meter, unless exposure is manual or metering is centre-weighted) on the point. */
@@ -1000,11 +1050,13 @@ class TactsCamera(private val context: Context) {
 
   fun switchLens() {
     if (!hasFrontAndBack || isRecording) return
+    pendingZoom = 1f
     update {
       // Manual values belong to one sensor; the other one starts in auto.
       it.copy(
         lensFacing = if (it.lensFacing == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK,
         physicalCameraId = null,
+        cameraId = null,
         exposureAuto = true,
         focusAuto = true,
         focusPullA = null,

@@ -77,6 +77,12 @@ hidden or says why.
 **Camera**
 - Front and back, and the **physical lenses** behind a multi-camera (ultra-wide, wide, tele) with
   their 35 mm equivalent
+- A **lens capsule** with one button per real lens, named as the phone's own camera app names them
+  (0.6, 1, 3 on a Galaxy S23; a 5× or 10× tele adds its own button). The figures come from each
+  lens's focal length and sensor size, so they are right on any phone; a lens listed as a camera of
+  its own, outside the main camera's zoom range, is opened directly
+- Controls laid out like the iOS 26 camera: flash on the left, the tools in one capsule in the
+  middle, PRO on the right; lenses over the frame; modes as words in a glass pill
 - **Camera info**: every Camera2 characteristic of every camera on the phone, a summary of what it
   supports, and its stream sizes
 - Every setting is kept between launches
@@ -106,7 +112,10 @@ What the app can do depends on the phone's camera (Settings > Camera info shows 
   curve support. Most mid- and high-end phones have them; LEGACY and many LIMITED cameras do not.
 - **RAW video** needs the `RAW` capability. Frames are written as uncompressed DNG, so the frame rate
   that reaches storage depends on the phone (on a Galaxy S23, about 10 of 181 frames were dropped in
-  6 s); dropped frames are counted on screen and in the final notice. No sound is recorded
+  6 s); dropped frames are counted on screen and in the final notice.
+- Which physical lens streams at a given zoom is the phone's choice. On a Galaxy S23, 3× in 4K HLG
+  video stays on the wide lens, cropped (in photo, 3× uses the tele). Settings → Lenses can lock one lens; that lock is not yet
+  tested with 10-bit video. No sound is recorded
   with RAW video.
 - Log profiles are curves on the phone's image processor, not a manufacturer's log.
 - LUTs and looks are burnt into 8-bit video only, not into 10-bit HDR or slow motion.

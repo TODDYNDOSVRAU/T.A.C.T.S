@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -91,6 +92,7 @@ import com.tacts.camera.camera.ShutterMode
 import com.tacts.camera.camera.TactsCamera
 import com.tacts.camera.camera.WhiteBalanceMode
 import com.tacts.camera.camera.angleLabel
+import com.tacts.camera.camera.formatFactor
 import com.tacts.camera.camera.shutterLabel
 import com.tacts.camera.ui.components.FilterChip
 import com.tacts.camera.ui.components.IconAction
@@ -192,7 +194,7 @@ fun CameraScreen(startMode: CaptureMode?) {
         val photo = s.mode == CaptureMode.PHOTO
         Box(
           (if (photo) Modifier.aspectRatio(3f / 4f, matchHeightConstraintsFirst = maxWidth / maxHeight > 3f / 4f).clip(Shapes.xs)
-          else Modifier.fillMaxSize())
+          else Modifier.fillMaxSize().clipToBounds())
             .background(Color.Black)
         ) {
           // Anamorphic desqueeze: the picture is shown wider than recorded, letterboxed in the frame.
@@ -268,7 +270,8 @@ fun CameraScreen(startMode: CaptureMode?) {
           Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = Space.s),
           horizontalAlignment = Alignment.CenterHorizontally
         ) {
-          if (s.mode != CaptureMode.RAW_VIDEO) ZoomChips(camera, Modifier.padding(bottom = Space.s))
+          // A lens locked in Settings ignores the capsule's lens changes, so it is not offered then.
+          if (s.mode != CaptureMode.RAW_VIDEO && s.physicalCameraId == null) ZoomChips(camera, Modifier.padding(bottom = Space.s))
           when (panel) {
             Panel.PRO -> ProPanel(camera, proTab, onTab = { proTab = it })
             Panel.LOOKS -> LookStrip(camera)
@@ -295,16 +298,14 @@ fun CameraScreen(startMode: CaptureMode?) {
             }
           }
           ShutterButton(camera, countdown > 0, Modifier.bounceEntrance(1)) { shoot() }
-          IconAction(
+          GlassIcon(
             Icons.Rounded.Cameraswitch,
             contentDescription = "Switch camera",
-            onClick = { camera.switchLens() },
             enabled = camera.hasFrontAndBack && !camera.isRecording,
-            filled = true,
             size = 52.dp,
             tint = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.bounceEntrance(2)
-          )
+          ) { camera.switchLens() }
         }
       }
     }
@@ -350,68 +351,94 @@ private fun TopBar(
   val colors = MaterialTheme.colorScheme
   val s = camera.settings
   fun tint(active: Boolean) = if (active) colors.primary else colors.onSurface
-  Row(
-    Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = Space.s, vertical = Space.xxs),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.SpaceBetween
-  ) {
-    IconAction(Icons.Rounded.Settings, "Settings", onClick = onSettings, tint = colors.onSurface, modifier = Modifier.bounceEntrance(0))
+  // The iOS 26 arrangement: flash alone on the left, the tools in one capsule in the middle, the mode's
+  // own switch (PRO) on the right.
+  Box(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = Space.m, vertical = Space.xs)) {
     if (camera.caps.hasFlash) {
-      IconAction(
+      GlassIcon(
         when (s.flash) {
           Flash.OFF -> Icons.Rounded.FlashOff
           Flash.AUTO -> Icons.Rounded.FlashAuto
           Flash.ON -> Icons.Rounded.FlashOn
         },
         contentDescription = "Flash ${s.flash.name.lowercase()}",
-        onClick = {
-          camera.update {
-            it.copy(
-              flash = if (it.mode != CaptureMode.PHOTO) (if (it.flash == Flash.OFF) Flash.ON else Flash.OFF)
-              else Flash.entries[(it.flash.ordinal + 1) % Flash.entries.size]
-            )
-          }
-        },
         tint = tint(s.flash != Flash.OFF),
-        modifier = Modifier.bounceEntrance(1)
-      )
-    } else {
-      Spacer(Modifier.size(48.dp))
-    }
-    if (s.mode == CaptureMode.PHOTO) {
-      IconAction(
-        when (s.timerSeconds) { 0 -> Icons.Rounded.TimerOff; 3 -> Icons.Rounded.Timer3; 10 -> Icons.Rounded.Timer10; else -> Icons.Rounded.Timer3 },
-        contentDescription = if (s.timerSeconds == 0) "Timer off" else "Timer ${s.timerSeconds} seconds",
-        onClick = onTimer,
-        tint = tint(s.timerSeconds > 0),
-        modifier = Modifier.bounceEntrance(2)
-      )
-    } else {
-      TagToggle("${if (s.mode == CaptureMode.SLOW_MO) s.slowMoFps else s.frameRate}p", selected = false, index = 2) {
-        val rates = if (s.mode == CaptureMode.SLOW_MO) camera.caps.highSpeedFps else camera.caps.frameRates
-        if (rates.isNotEmpty()) {
-          camera.update {
-            if (it.mode == CaptureMode.SLOW_MO) it.copy(slowMoFps = rates[(rates.indexOf(it.slowMoFps) + 1) % rates.size])
-            else it.copy(frameRate = rates[(rates.indexOf(it.frameRate) + 1) % rates.size])
-          }
+        modifier = Modifier.align(Alignment.CenterStart).bounceEntrance(0)
+      ) {
+        camera.update {
+          it.copy(
+            flash = if (it.mode != CaptureMode.PHOTO) (if (it.flash == Flash.OFF) Flash.ON else Flash.OFF)
+            else Flash.entries[(it.flash.ordinal + 1) % Flash.entries.size]
+          )
         }
       }
     }
-    IconAction(
-      Icons.Rounded.Visibility,
-      contentDescription = "Monitoring",
-      onClick = { onPanel(Panel.MONITOR) },
-      tint = tint(panel == Panel.MONITOR || s.peaking || s.zebras || s.falseColor),
-      modifier = Modifier.bounceEntrance(3)
-    )
-    IconAction(
-      Icons.Rounded.Palette,
-      contentDescription = "Looks and LUTs",
-      onClick = { onPanel(Panel.LOOKS) },
-      tint = tint(panel == Panel.LOOKS || s.look != "NATURAL" || s.lutName != null),
-      modifier = Modifier.bounceEntrance(4)
-    )
-    TagToggle("PRO", selected = panel == Panel.PRO || !s.isAllAuto, index = 5) { onPanel(Panel.PRO) }
+
+    Row(
+      Modifier.align(Alignment.Center).bounceEntrance(1).floatingSurface(Shapes.pill).padding(horizontal = Space.xxs),
+      verticalAlignment = Alignment.CenterVertically
+    ) {
+      IconAction(Icons.Rounded.Settings, "Settings", onClick = onSettings, tint = colors.onSurface)
+      if (s.mode == CaptureMode.PHOTO) {
+        IconAction(
+          when (s.timerSeconds) { 0 -> Icons.Rounded.TimerOff; 3 -> Icons.Rounded.Timer3; 10 -> Icons.Rounded.Timer10; else -> Icons.Rounded.Timer3 },
+          contentDescription = if (s.timerSeconds == 0) "Timer off" else "Timer ${s.timerSeconds} seconds",
+          onClick = onTimer,
+          tint = tint(s.timerSeconds > 0)
+        )
+      } else {
+        TagToggle("${if (s.mode == CaptureMode.SLOW_MO) s.slowMoFps else s.frameRate}p", selected = false) {
+          val rates = if (s.mode == CaptureMode.SLOW_MO) camera.caps.highSpeedFps else camera.caps.frameRates
+          if (rates.isNotEmpty()) {
+            camera.update {
+              if (it.mode == CaptureMode.SLOW_MO) it.copy(slowMoFps = rates[(rates.indexOf(it.slowMoFps) + 1) % rates.size])
+              else it.copy(frameRate = rates[(rates.indexOf(it.frameRate) + 1) % rates.size])
+            }
+          }
+        }
+      }
+      IconAction(
+        Icons.Rounded.Visibility,
+        contentDescription = "Monitoring",
+        onClick = { onPanel(Panel.MONITOR) },
+        tint = tint(panel == Panel.MONITOR || s.peaking || s.zebras || s.falseColor)
+      )
+      IconAction(
+        Icons.Rounded.Palette,
+        contentDescription = "Looks and LUTs",
+        onClick = { onPanel(Panel.LOOKS) },
+        tint = tint(panel == Panel.LOOKS || s.look != "NATURAL" || s.lutName != null)
+      )
+    }
+
+    Box(Modifier.align(Alignment.CenterEnd).bounceEntrance(2)) {
+      TagToggle("PRO", selected = panel == Panel.PRO || !s.isAllAuto) { onPanel(Panel.PRO) }
+    }
+  }
+}
+
+/** A round button on the glass fill, as the iOS 26 camera draws its corner controls. */
+@Composable
+private fun GlassIcon(
+  icon: androidx.compose.ui.graphics.vector.ImageVector,
+  contentDescription: String,
+  tint: Color,
+  modifier: Modifier = Modifier,
+  enabled: Boolean = true,
+  size: androidx.compose.ui.unit.Dp = 44.dp,
+  onClick: () -> Unit
+) {
+  Box(
+    modifier
+      .size(maxOf(size, 48.dp))
+      .clip(CircleShape)
+      .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+      .semantics { this.contentDescription = contentDescription },
+    contentAlignment = Alignment.Center
+  ) {
+    Box(Modifier.size(size).floatingSurface(CircleShape), contentAlignment = Alignment.Center) {
+      Icon(icon, contentDescription = null, tint = if (enabled) tint else tint.copy(alpha = 0.38f), modifier = Modifier.size(22.dp))
+    }
   }
 }
 
@@ -479,11 +506,10 @@ private fun InfoStrip(camera: TactsCamera) {
 
 /** A short on/off label in the top bar (PRO, the frame rate), on the quiet control fill. */
 @Composable
-private fun TagToggle(text: String, selected: Boolean, index: Int, onClick: () -> Unit) {
+private fun TagToggle(text: String, selected: Boolean, onClick: () -> Unit) {
   Box(
     Modifier
       .size(width = 56.dp, height = 48.dp)
-      .bounceEntrance(index)
       .toggleable(value = selected, role = Role.Switch, onValueChange = { onClick() }),
     contentAlignment = Alignment.Center
   ) {
@@ -593,28 +619,30 @@ private fun ProgressPill(text: String) {
 
 @Composable
 private fun ZoomChips(camera: TactsCamera, modifier: Modifier) {
-  val presets = buildList {
-    if (camera.minZoom < 0.95f) add(camera.minZoom)
-    listOf(1f, 2f, 3f, 5f, 10f).filter { it <= camera.maxZoom + 0.01f }.forEach { add(it) }
-  }
-  if (presets.size < 2) return
+  // One button per real lens (0.6, 1, 3, ... as measured from the lenses), like the iOS capsule.
+  val stops = camera.lensStops
+  if (stops.size < 2) return
   val colors = MaterialTheme.colorScheme
-  val active = presets.lastOrNull { it <= camera.zoomRatio + 0.01f } ?: presets.first()
+  val factor = camera.zoomFactor
+  val pinned = camera.settings.cameraId
+  val active = if (pinned != null) stops.firstOrNull { it.cameraId == pinned }
+  else stops.filter { it.cameraId == null }.lastOrNull { it.factor <= factor + 0.01f }
   Row(
-    modifier.bounceEntrance().floatingSurface(Shapes.pill).padding(Space.xs),
-    horizontalArrangement = Arrangement.spacedBy(Space.xs)
+    modifier.bounceEntrance().floatingSurface(Shapes.pill).padding(Space.xxs),
+    horizontalArrangement = Arrangement.spacedBy(Space.xxs),
+    verticalAlignment = Alignment.CenterVertically
   ) {
-    presets.forEachIndexed { i, p ->
-      val selected = p == active
-      val shown = if (selected) camera.zoomRatio else p
-      val text = if (shown < 1f || shown % 1f > 0.05f) "%.1f".format(shown) else "${shown.roundToInt()}"
+    stops.forEachIndexed { i, stop ->
+      val selected = stop == active
+      val text = if (selected) formatFactor(factor) else stop.label
       Box(
         Modifier
           .bounceEntrance(i)
-          .size(40.dp)
-          .glassControl(CircleShape, selected)
-          .clickable(role = Role.Button) { camera.setZoom(p) }
-          .semantics { contentDescription = "Zoom $text times" },
+          .size(if (selected) 44.dp else 36.dp)
+          .clip(CircleShape)
+          .background(if (selected) colors.surfaceContainer else Color.Transparent)
+          .clickable(role = Role.Button) { camera.selectLens(stop) }
+          .semantics { contentDescription = "Lens ${stop.label} times" },
         contentAlignment = Alignment.Center
       ) {
         Text(
@@ -633,14 +661,26 @@ private fun PhotoModes(camera: TactsCamera) {
     Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = Space.s),
     horizontalArrangement = Arrangement.spacedBy(Space.xxs, Alignment.CenterHorizontally)
   ) {
+    // Quieter than the modes below: plain words, the chosen one in the accent, as iOS marks its options.
+    val colors = MaterialTheme.colorScheme
     PhotoMode.entries.forEachIndexed { i, m ->
-      FilterChip(
-        m.label,
-        selected = camera.settings.photoMode == m,
-        onClick = { camera.update { it.copy(photoMode = m) } },
-        enabled = camera.progress == null,
-        modifier = Modifier.bounceEntrance(i)
-      )
+      val selected = camera.settings.photoMode == m
+      Box(
+        Modifier
+          .bounceEntrance(i)
+          .height(36.dp)
+          .clip(Shapes.pill)
+          .selectable(selected = selected, enabled = camera.progress == null, role = Role.Tab) { camera.update { it.copy(photoMode = m) } }
+          .padding(horizontal = Space.m),
+        contentAlignment = Alignment.Center
+      ) {
+        Text(
+          m.label.uppercase(),
+          style = AppText.Caption1.copy(fontWeight = FontWeight.SemiBold, letterSpacing = 0.6.sp),
+          color = if (selected) colors.primary else colors.onSurfaceVariant,
+          maxLines = 1
+        )
+      }
     }
   }
 }
@@ -655,18 +695,38 @@ private fun ModeSwitch(camera: TactsCamera) {
       else -> true
     }
   }
+  val colors = MaterialTheme.colorScheme
+  // iOS 26: the modes are words, and the chosen one sits in a glass pill.
   Row(
-    Modifier.fillMaxWidth().padding(top = Space.xxs),
-    horizontalArrangement = Arrangement.spacedBy(Space.xxs, Alignment.CenterHorizontally)
+    Modifier.fillMaxWidth().padding(top = Space.xs),
+    horizontalArrangement = Arrangement.Center,
+    verticalAlignment = Alignment.CenterVertically
   ) {
-    modes.forEachIndexed { i, m ->
-      FilterChip(
-        label = m.label,
-        selected = camera.settings.mode == m,
-        onClick = { camera.update { it.copy(mode = m) } },
-        enabled = !camera.isRecording,
-        modifier = Modifier.bounceEntrance(i)
-      )
+    Row(Modifier.floatingSurface(Shapes.pill).padding(Space.xxs)) {
+      modes.forEachIndexed { i, m ->
+        val selected = camera.settings.mode == m
+        Box(
+          Modifier
+            .bounceEntrance(i)
+            .height(40.dp)
+            .clip(Shapes.pill)
+            .background(if (selected) colors.surfaceContainer else Color.Transparent)
+            .selectable(selected = selected, enabled = !camera.isRecording, role = Role.Tab) { camera.update { it.copy(mode = m) } }
+            .padding(horizontal = Space.l),
+          contentAlignment = Alignment.Center
+        ) {
+          Text(
+            m.label,
+            style = AppText.Subhead.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium),
+            color = when {
+              selected -> colors.onSurface
+              camera.isRecording -> colors.onSurfaceVariant.copy(alpha = 0.5f)
+              else -> colors.onSurfaceVariant
+            },
+            maxLines = 1
+          )
+        }
+      }
     }
   }
 }

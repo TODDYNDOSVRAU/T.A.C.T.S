@@ -11,7 +11,9 @@ data class LiveReadout(
   /** The colour transform and gains auto white balance chose, for starting Kelvin mode from them. */
   val ccTransform: android.hardware.camera2.params.ColorSpaceTransform? = null,
   val ccGains: android.hardware.camera2.params.RggbChannelVector? = null,
-  val faces: List<android.graphics.Rect> = emptyList()
+  val faces: List<android.graphics.Rect> = emptyList(),
+  /** The physical lens a logical multi-camera is streaming from, when it says. */
+  val activeLens: String? = null
 )
 
 private val ISO_STOPS = listOf(
