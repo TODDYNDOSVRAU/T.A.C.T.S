@@ -71,7 +71,18 @@ hidden or says why.
 **Photo**
 - JPEG (quality 70–100), **Ultra HDR**, **RAW (DNG)**, **RAW + JPEG**
 - **Burst**, **interval / timelapse**, **AE bracketing** (3–9 shots, ±0.3 to ±3 EV),
-  **focus bracketing** for focus stacking, **night mode** (averages 2–32 frames to cut noise)
+  **focus bracketing** for focus stacking
+- Modes made from several frames, each frame aligned to the first tile by tile, with what moved
+  between frames taken from one frame only:
+  - **Night**: 2–32 frames averaged to cut noise
+  - **HDR**: three exposures (±1 to ±3 EV) fused, each part from the frame where it is best exposed
+  - **Super-res**: 4–16 hand-held frames added on a grid twice as fine, 8160×6120 from 4080×3060 on a
+    Galaxy S23. The detail gained is real but modest; it is not what a 50 MP sensor records, and the
+    file's EXIF says how it was made
+  - On a Galaxy S23 (release build, 8 frames): Night 2.5 s, HDR 1.7 s, Super-res 3.4 s from the last
+    frame to the saved file
+- **Presets**: save the current exposure, focus, colour, format and monitoring settings and apply them
+  with one tap; the mode, lens and clip numbering stay as they are
 - Self-timer, flash, low-light boost and torch strength where supported
 
 **Camera**
@@ -124,12 +135,17 @@ What the app can do depends on the phone's camera (Settings > Camera info shows 
   tested with 10-bit video. No sound is recorded
   with RAW video.
 - Log profiles are curves on the phone's image processor, not a manufacturer's log.
+- Night, HDR and Super-res need the JPEG format, and work from the phone's processed JPEGs, not RAW.
+  HDR does not yet keep moving things from doubling. Super-res's gain in detail has not yet been
+  measured on a lit test scene. Presets are not yet tested on the phone.
+- On a phone that reports a resolution higher than 12 MP only to its maker's own apps (the Galaxy S23
+  with its 50 MP and 8K modes), third-party apps, this one included, get 12 MP and 4K30 at most.
 - LUTs and looks are burnt into 8-bit video only, not into 10-bit HDR or slow motion.
 - Slow motion needs a high-speed profile that CameraX can read for the camera; some phones (the Galaxy S23 among them) list 120 fps in Camera2 only, and then the mode is hidden. It records without sound, as the platform's high-speed mode does.
 
 ## Roadmap
 
-Multi-frame alignment for night mode, a dual-camera picture-in-picture mode, external microphones with
+A dual-camera picture-in-picture mode, external microphones with
 gain, and compressed RAW video.
 
 ## Tech

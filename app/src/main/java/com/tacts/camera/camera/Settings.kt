@@ -30,7 +30,9 @@ enum class PhotoMode(val label: String) {
   INTERVAL("Interval"),
   BRACKET("AE bracket"),
   FOCUS_BRACKET("Focus bracket"),
-  NIGHT("Night")
+  NIGHT("Night"),
+  HDR("HDR"),
+  SUPER_RES("Super-res")
 }
 
 // ---- video ----
@@ -145,6 +147,13 @@ enum class SafeArea(val label: String, val fraction: Float) { OFF("Off", 0f), P9
 
 // ---- the whole set ----
 
+/**
+ * A saved set of settings: exposure, focus, colour, picture, photo, video and monitoring. Applying one
+ * keeps the capture mode, the lens and the clip numbering as they are.
+ */
+@Serializable
+data class Preset(val name: String, val values: CameraSettings)
+
 @Serializable
 data class CameraSettings(
   val mode: CaptureMode = CaptureMode.PHOTO,
@@ -206,6 +215,9 @@ data class CameraSettings(
   val bracketShots: Int = 3,
   val focusBracketShots: Int = 5,
   val nightFrames: Int = 8,
+  /** HDR: the two extra exposures, this many stops under and over the middle one. */
+  val hdrStops: Float = 2f,
+  val superResFrames: Int = 8,
   val jpegQuality: Int = 95,
   /** Save the frame at the press from a buffer, where the camera supports it; off waits for a fresh, fully processed frame. */
   val zeroShutterLag: Boolean = true,
@@ -236,8 +248,40 @@ data class CameraSettings(
   val desqueeze: Desqueeze = Desqueeze.OFF,
   val level: Boolean = false,
   val centerMark: Boolean = false,
-  val timecode: Boolean = true
+  val timecode: Boolean = true,
+
+  /** Saved sets of these settings; see [Preset]. */
+  val presets: List<Preset> = emptyList()
 ) {
+  /** These settings with a preset's values, keeping what belongs to the moment: mode, lens, clip numbering, presets. */
+  fun withPreset(p: Preset): CameraSettings = p.values.copy(
+    mode = mode,
+    lensFacing = lensFacing,
+    physicalCameraId = physicalCameraId,
+    cameraId = cameraId,
+    glass = glass,
+    reel = reel,
+    clipCounter = clipCounter,
+    presets = presets
+  )
+
+  /** A preset of the current values, named by what sets it apart from auto. */
+  fun toPreset(): Preset {
+    val parts = mutableListOf<String>()
+    parts += if (exposureAuto) "Auto exposure" else "ISO $iso · ${shutterLabel(shutterNs)}"
+    if (!focusAuto) parts += focusLabel(focusDiopters)
+    parts += when (wbMode) {
+      WhiteBalanceMode.AUTO -> "Auto WB"
+      WhiteBalanceMode.PRESET -> whiteBalance.label
+      WhiteBalanceMode.KELVIN -> "$kelvin K"
+    }
+    if (gamma != GammaProfile.STANDARD) parts += gamma.label
+    if (look != "NATURAL") com.tacts.camera.filters.Look.entries.firstOrNull { it.name == look }?.let { parts += it.label }
+    lutName?.let { parts += it }
+    return Preset(parts.joinToString(" · "), copy(presets = emptyList()))
+  }
+
+
   /** Nothing about exposure, focus or colour has been set by hand. */
   val isAllAuto: Boolean
     get() = exposureAuto && focusAuto && wbMode == WhiteBalanceMode.AUTO && evIndex == 0 && !aeLock && !awbLock

@@ -61,6 +61,9 @@ import com.tacts.camera.filters.applyTo
 import com.tacts.camera.monitor.MonitorConfig
 import com.tacts.camera.monitor.MonitorFrame
 import com.tacts.camera.monitor.ScopeAnalyzer
+import com.tacts.camera.photo.Frame
+import com.tacts.camera.photo.MultiFrame
+import com.tacts.camera.photo.PhotoOutput
 import com.tacts.camera.raw.RawVideoEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -266,18 +269,23 @@ class TactsCamera(private val context: Context) {
   // ---- settings ----
 
   /** Changes the settings, saves them, and rebinds or re-applies whatever the change touches. */
-  fun update(transform: (CameraSettings) -> CameraSettings) {
+  fun update(transform: (CameraSettings) -> CameraSettings) = update(false, transform)
+
+  /** Applies a saved preset as it was saved, without taking over the live exposure and focus. */
+  fun applyPreset(p: Preset) = update(true) { it.withPreset(p) }
+
+  private fun update(exact: Boolean, transform: (CameraSettings) -> CameraSettings) {
     val before = settings
     var next = transform(before)
     if (next == before) return
     // Leaving auto exposure or focus starts from the values the camera was using.
-    if (before.exposureAuto && !next.exposureAuto) {
+    if (!exact && before.exposureAuto && !next.exposureAuto) {
       next = next.copy(
         iso = live.iso?.let { iso -> caps.isoValues.getOrNull(nearestIndex(caps.isoValues, iso) { a, b -> abs(a - b).toDouble() }) } ?: next.iso,
         shutterNs = live.shutterNs?.let { ns -> caps.shutterValues.getOrNull(nearestIndex(caps.shutterValues, ns) { a, b -> abs(ln(a.toDouble() / b)) }) } ?: next.shutterNs
       )
     }
-    if (before.focusAuto && !next.focusAuto && next.focusDiopters == before.focusDiopters) {
+    if (!exact && before.focusAuto && !next.focusAuto && next.focusDiopters == before.focusDiopters) {
       next = next.copy(focusDiopters = (live.focusDiopters ?: 0f).coerceIn(0f, caps.minFocusDiopters))
     }
     if (isRecording && needsRebind(before, next)) {
@@ -851,6 +859,8 @@ class TactsCamera(private val context: Context) {
       PhotoMode.BRACKET -> bracket(s)
       PhotoMode.FOCUS_BRACKET -> focusBracket(s)
       PhotoMode.NIGHT -> nightStack(s)
+      PhotoMode.HDR -> hdrMerge(s)
+      PhotoMode.SUPER_RES -> superRes(s)
     }
   }
 
@@ -895,56 +905,161 @@ class TactsCamera(private val context: Context) {
   }
 
   /**
-   * Night mode: several frames averaged into one, which lowers noise by the square root of their
-   * number. Frames are taken as fast as the camera allows; a tripod or a steady hand keeps them aligned.
+   * Night mode: several frames aligned and averaged, which lowers noise by about the square root of
+   * their number. Whatever moved between frames is taken from the first one only.
    */
   private suspend fun nightStack(s: CameraSettings) {
+    val frames = burst("Night", s.nightFrames) ?: return
+    merged(s, frames.first, frames.second, 0, "Night, ${frames.first.size} frames aligned and averaged", "Night") { f, step ->
+      MultiFrame.night(f, 0, step)
+    }
+  }
+
+  /** HDR: three exposures, under, middle and over by [CameraSettings.hdrStops], fused into one. */
+  private suspend fun hdrMerge(s: CameraSettings) {
     val capture = imageCapture ?: return
-    if (capture.outputFormat != ImageCapture.OUTPUT_FORMAT_JPEG) {
-      notice = "Night mode needs the JPEG format"
-      return
-    }
+    if (!jpegOnly(capture, "HDR")) return
     busy = true
-    var acc: IntArray? = null
-    var w = 0
-    var h = 0
-    var count = 0
-    val mirror = s.lensFacing == CameraSelector.LENS_FACING_FRONT
-    for (i in 0 until s.nightFrames) {
-      progress = "Night ${i + 1} / ${s.nightFrames}"
-      val frame = captureBitmap(capture, mirror) ?: continue
-      if (acc == null) {
-        w = frame.width
-        h = frame.height
-        acc = IntArray(w * h * 3)
+    val stops = listOf(-s.hdrStops, 0f, s.hdrStops)
+    val frames = mutableListOf<Frame>()
+    var rotation = 0
+    try {
+      stops.forEachIndexed { i, ev ->
+        progress = "HDR ${i + 1} / 3 · ${if (ev >= 0) "+" else ""}${"%.1f".format(ev)} EV"
+        exposeBy(s, ev)
+        val (bytes, rot) = captureJpeg(capture) ?: return
+        frames += Frame(bytes)
+        rotation = rot
       }
-      if (frame.width != w || frame.height != h) continue
-      val row = IntArray(w)
-      for (y in 0 until h) {
-        frame.getPixels(row, 0, w, 0, y, w, 1)
-        val base = y * w * 3
-        for (x in 0 until w) {
-          val p = row[x]
-          acc[base + x * 3] += (p shr 16) and 0xFF
-          acc[base + x * 3 + 1] += (p shr 8) and 0xFF
-          acc[base + x * 3 + 2] += p and 0xFF
+    } finally {
+      settings = s
+      applyRequest()
+    }
+    merged(s, frames, rotation, 1, "HDR, 3 exposures at -/+${"%.1f".format(java.util.Locale.US, s.hdrStops)} EV fused", "HDR") { f, step ->
+      MultiFrame.hdr(f, 1, step)
+    }
+  }
+
+  /** Super-resolution: shifted frames added on a grid twice as fine, for a picture of twice the width and height. */
+  private suspend fun superRes(s: CameraSettings) {
+    val frames = burst("Super-res", s.superResFrames) ?: return
+    val w = frames.first[0].width * 2
+    val h = frames.first[0].height * 2
+    merged(s, frames.first, frames.second, 0, "Super-resolution ${w}x$h from ${frames.first.size} frames of ${w / 2}x${h / 2}", "Super-res") { f, step ->
+      MultiFrame.superRes(f, 0, step)
+    }
+  }
+
+  /** Changes exposure by [stops]: by shutter when exposure is manual, by EV otherwise, and lets it settle. */
+  private suspend fun exposeBy(s: CameraSettings, stops: Float) {
+    if (!s.exposureAuto && caps.manualSensor) {
+      val ns = (s.shutterNs * 2.0.pow(stops.toDouble())).toLong()
+      settings = s.copy(shutterNs = caps.exposureRange?.let { ns.coerceIn(it.lower, it.upper) } ?: ns)
+      applyRequest()
+      delay(150)
+    } else {
+      val idx = if (caps.evStep > 0f) (s.evIndex + stops / caps.evStep).roundToInt().coerceIn(caps.evRange) else 0
+      camera?.cameraControl?.setExposureCompensationIndex(idx)
+      delay(450)
+    }
+  }
+
+  private fun jpegOnly(capture: ImageCapture, mode: String): Boolean {
+    if (capture.outputFormat == ImageCapture.OUTPUT_FORMAT_JPEG) return true
+    notice = "$mode needs the JPEG format"
+    return false
+  }
+
+  /** [count] frames as fast as the camera gives them, kept as JPEG, with the rotation of the last. */
+  private suspend fun burst(label: String, count: Int): Pair<List<Frame>, Int>? {
+    val capture = imageCapture ?: return null
+    if (!jpegOnly(capture, label)) return null
+    busy = true
+    val frames = mutableListOf<Frame>()
+    var rotation = 0
+    for (i in 0 until count) {
+      progress = "$label ${i + 1} / $count"
+      val (bytes, rot) = captureJpeg(capture) ?: continue
+      frames += Frame(bytes)
+      rotation = rot
+    }
+    if (frames.size < 2) {
+      notice = "$label needs at least 2 frames; the camera gave ${frames.size}"
+      return null
+    }
+    return frames to rotation
+  }
+
+  /** Runs a merge on the worker, applies the look and LUT, saves with EXIF, and reports how long it took. */
+  private suspend fun merged(
+    s: CameraSettings,
+    frames: List<Frame>,
+    rotation: Int,
+    ref: Int,
+    description: String,
+    label: String,
+    merge: (List<Frame>, (String) -> Unit) -> Bitmap
+  ) = suspendCancellableCoroutine { cont ->
+    worker.execute {
+      val started = SystemClock.elapsedRealtime()
+      val uri = try {
+        var stepStart = started
+        val out = merge(frames) { step ->
+          val now = SystemClock.elapsedRealtime()
+          android.util.Log.i("TACTS", "$label: $step after ${now - stepStart} ms")
+          stepStart = now
+          mainExecutor.execute { progress = "$label · $step" }
         }
+        android.util.Log.i("TACTS", "$label: merged in ${SystemClock.elapsedRealtime() - stepStart} ms")
+        mainExecutor.execute { progress = "$label · saving" }
+        val look = Look.entries.firstOrNull { it.name == s.look } ?: Look.NATURAL
+        PhotoOutput.applyInPlace(out, look.matrix()?.array, luts.load(s.lutName))
+        val mirror = s.lensFacing == CameraSelector.LENS_FACING_FRONT
+        val u = PhotoOutput.save(context, out, MediaSaver.newName(), s.jpegQuality, frames[ref].jpeg, PhotoOutput.exifOrientation(rotation, mirror), description)
+        out.recycle()
+        u
+      } catch (e: OutOfMemoryError) {
+        android.util.Log.w("TACTS", "$label merge out of memory", e)
+        mainExecutor.execute { notice = "$label failed: not enough memory. Use fewer frames." }
+        null
+      } catch (e: Exception) {
+        android.util.Log.w("TACTS", "$label merge failed", e)
+        mainExecutor.execute { notice = "$label failed: ${e.message}" }
+        null
       }
-      frame.recycle()
-      count++
-    }
-    val sum = acc ?: return
-    progress = "Night · merging"
-    val result = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-    val row = IntArray(w)
-    for (y in 0 until h) {
-      val base = y * w * 3
-      for (x in 0 until w) {
-        row[x] = (0xFF shl 24) or ((sum[base + x * 3] / count) shl 16) or ((sum[base + x * 3 + 1] / count) shl 8) or (sum[base + x * 3 + 2] / count)
+      android.util.Log.i("TACTS", "$label: ${frames.size} frames merged and saved in ${SystemClock.elapsedRealtime() - started} ms")
+      mainExecutor.execute {
+        if (uri != null) {
+          lastCapture = uri
+          lastIsVideo = false
+          loadThumb(uri)
+        } else if (notice == null) notice = "Could not save the photo"
+        if (cont.isActive) cont.resume(Unit)
       }
-      result.setPixels(row, 0, w, 0, y, w, 1)
     }
-    saveProcessed(result, s)
+  }
+
+  /** One frame's JPEG and its rotation, straight from the camera, without decoding it. */
+  private suspend fun captureJpeg(capture: ImageCapture): Pair<ByteArray, Int>? = suspendCancellableCoroutine { cont ->
+    capture.takePicture(worker, object : ImageCapture.OnImageCapturedCallback() {
+      override fun onCaptureSuccess(image: ImageProxy) {
+        val out = try {
+          val buf = image.planes[0].buffer
+          val bytes = ByteArray(buf.remaining()).also { buf.get(it) }
+          bytes to image.imageInfo.rotationDegrees
+        } catch (e: Exception) {
+          null
+        } finally {
+          image.close()
+        }
+        if (cont.isActive) cont.resume(out)
+      }
+
+      override fun onError(exception: ImageCaptureException) {
+        mainExecutor.execute { notice = "Capture failed: ${exception.message}" }
+        if (cont.isActive) cont.resume(null)
+      }
+    })
   }
 
   /** One photo in the current format, with the look and LUT applied to JPEGs. Suspends until saved. */

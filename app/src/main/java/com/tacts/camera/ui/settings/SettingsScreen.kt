@@ -85,6 +85,7 @@ private sealed interface Page {
   data object Luts : Page
   data object Lenses : Page
   data object Info : Page
+  data object Presets : Page
 }
 
 /**
@@ -109,6 +110,7 @@ fun SettingsScreen(camera: TactsCamera, onClose: () -> Unit) {
       Page.Luts -> LutPage(camera) { page = Page.Root }
       Page.Lenses -> LensPage(camera) { page = Page.Root }
       Page.Info -> CameraInfoPage(onBack = { page = Page.Root })
+      Page.Presets -> PresetPage(camera) { page = Page.Root }
     }
   }
 }
@@ -184,9 +186,23 @@ private fun Root(camera: TactsCamera, scroll: ScrollState, animate: Boolean, onC
       GroupDivider()
       StepperRow("Focus bracket shots", s.focusBracketShots, { v -> set { it.copy(focusBracketShots = v) } }, 2..60)
       GroupDivider()
-      StepperRow("Night frames", s.nightFrames, { v -> set { it.copy(nightFrames = v) } }, 2..32, subtitle = "More frames, less noise; keep the phone still")
+      StepperRow("Night frames", s.nightFrames, { v -> set { it.copy(nightFrames = v) } }, 2..32, subtitle = "Aligned and averaged: more frames, less noise")
+      GroupDivider()
+      Pick("HDR range", s.hdrStops, listOf(1f, 1.5f, 2f, 2.5f, 3f), { "±%.1f EV".format(it) }) { v -> set { it.copy(hdrStops = v) } }
+      GroupDivider()
+      StepperRow("Super-res frames", s.superResFrames, { v -> set { it.copy(superResFrames = v) } }, 4..16, subtitle = "Hand-held works best: the small shake is what adds detail")
     }
     GroupFooter("RAW is the sensor's data in a DNG file. Ultra HDR keeps an HDR gain map inside the JPEG for HDR screens.")
+    GroupFooter(
+      "Night, HDR and Super-res take several JPEG frames and align them before merging; what moves between frames comes from one frame only. " +
+        "Super-res doubles width and height (4× the pixels). It adds some real detail, much less than a sensor with that many pixels would."
+    )
+
+    // ---- Presets ----
+    GroupHeader("PRESETS")
+    InsetGroup(Modifier.bounceEntrance(next(), animate)) {
+      ListRow("Presets", value = if (s.presets.isEmpty()) "None" else "${s.presets.size}", icon = Icons.Rounded.Tune, onClick = { open(Page.Presets) })
+    }
 
     // ---- Video ----
     GroupHeader("VIDEO")
@@ -406,6 +422,52 @@ private fun LutPage(camera: TactsCamera, onBack: () -> Unit) {
           camera.update { it.copy(lutName = null) }
           names = camera.luts.names()
         })
+      }
+    }
+    Spacer(Modifier.height(Space.section))
+  }
+}
+
+/** Saved sets of settings: save the current one, tap one to apply it, delete the chosen one. */
+@Composable
+private fun PresetPage(camera: TactsCamera, onBack: () -> Unit) {
+  val s = camera.settings
+  var chosen by remember { mutableStateOf<Int?>(null) }
+  Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    SubPageHeader("Presets", "Settings", onBack) {
+      TextAction("Save current", onClick = {
+        val p = s.toPreset()
+        if (s.presets.any { it.values == p.values }) camera.notice = "Already saved as \"${s.presets.first { it.values == p.values }.name}\""
+        else camera.update { it.copy(presets = it.presets + p) }
+      })
+    }
+    if (s.presets.isEmpty()) {
+      GroupFooter("No presets yet. Set exposure, focus, colour and formats the way you want them, then Save current.")
+    } else {
+      InsetGroup(Modifier.bounceEntrance()) {
+        s.presets.forEachIndexed { i, p ->
+          if (i > 0) GroupDivider()
+          RadioRow(
+            "Preset ${i + 1}",
+            selected = chosen == i,
+            subtitle = p.name,
+            onClick = {
+              chosen = i
+              camera.applyPreset(p)
+            },
+            modifier = Modifier.bounceEntrance(i + 1)
+          )
+        }
+      }
+      GroupFooter("Applying a preset keeps the mode, the lens and the clip numbering.")
+      chosen?.takeIf { it in s.presets.indices }?.let { i ->
+        Spacer(Modifier.height(Space.l))
+        InsetGroup {
+          ListRow("Delete preset ${i + 1}", chevron = false, onClick = {
+            chosen = null
+            camera.update { it.copy(presets = it.presets.filterIndexed { k, _ -> k != i }) }
+          })
+        }
       }
     }
     Spacer(Modifier.height(Space.section))
